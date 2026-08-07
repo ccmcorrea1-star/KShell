@@ -1,0 +1,15 @@
+[package]
+name = "klaucher"
+version = "0.1.0"
+edition = "2021"
+description = "A fast, minimal desktop application launcher for Wayland and Niri"
+license = "MIT"
+
+[dependencies]
+crossterm = "0.29"
+image = "0.25"
+ratatui = "0.30"
+ratatui-image = { version = "10", default-features = false, features = ["image-defaults", "crossterm"] }
+resvg = "0.47"
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
