@@ -3,7 +3,8 @@ use std::io::{self, Stdout};
 use crossterm::{
     cursor::{Hide, Show},
     event::{
-        self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEventKind, KeyModifiers,
+        self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers,
     },
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -99,50 +100,75 @@ pub fn run(
         terminal.draw(|frame| draw(frame, applications, &query, &results, selected))?;
 
         match event::read()? {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
-                if key.code == KeyCode::Esc
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL))
+            Event::Key(key) => {
+                if let Some(result) =
+                    handle_key_event(key, applications, &mut query, &mut results, &mut selected)
                 {
-                    return Ok(RunResult::new(None));
-                }
-
-                match key.code {
-                    KeyCode::Enter => {
-                        return Ok(RunResult::new(
-                            results.get(selected).map(|result| result.index),
-                        ));
-                    }
-                    KeyCode::Up if !results.is_empty() => {
-                        selected = if selected == 0 {
-                            results.len() - 1
-                        } else {
-                            selected - 1
-                        };
-                    }
-                    KeyCode::Down if !results.is_empty() => {
-                        selected = (selected + 1) % results.len();
-                    }
-                    KeyCode::Backspace => {
-                        query.pop();
-                        results = search::filter(applications, &query);
-                        selected = selected.min(results.len().saturating_sub(1));
-                    }
-                    KeyCode::Char(character)
-                        if !key
-                            .modifiers
-                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                    {
-                        query.push(character);
-                        results = search::filter(applications, &query);
-                        selected = selected.min(results.len().saturating_sub(1));
-                    }
-                    _ => {}
+                    return Ok(result);
                 }
             }
             Event::FocusLost => return Ok(RunResult::new(None)),
             _ => {}
         }
+    }
+}
+
+fn handle_key_event(
+    key: KeyEvent,
+    applications: &[DesktopEntry],
+    query: &mut String,
+    results: &mut Vec<search::SearchResult>,
+    selected: &mut usize,
+) -> Option<RunResult> {
+    if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return None;
+    }
+
+    if key.code == KeyCode::Esc
+        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+    {
+        return Some(RunResult::new(None));
+    }
+
+    match key.code {
+        KeyCode::Enter => Some(RunResult::new(
+            results.get(*selected).map(|result| result.index),
+        )),
+        KeyCode::Up if !results.is_empty() => {
+            *selected = if *selected == 0 {
+                results.len() - 1
+            } else {
+                *selected - 1
+            };
+            None
+        }
+        KeyCode::Down if !results.is_empty() => {
+            *selected = (*selected + 1) % results.len();
+            None
+        }
+        KeyCode::Backspace => {
+            remove_last_grapheme(query);
+            *results = search::filter(applications, query);
+            *selected = (*selected).min(results.len().saturating_sub(1));
+            None
+        }
+        KeyCode::Char(character)
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+        {
+            query.push(character);
+            *results = search::filter(applications, query);
+            *selected = (*selected).min(results.len().saturating_sub(1));
+            None
+        }
+        _ => None,
+    }
+}
+
+fn remove_last_grapheme(value: &mut String) {
+    if let Some((index, _)) = value.grapheme_indices(true).next_back() {
+        value.truncate(index);
     }
 }
 
@@ -354,9 +380,10 @@ fn truncate_to_width(value: &str, width: u16) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use ratatui::{backend::TestBackend, Terminal};
 
-    use super::{draw, truncate_to_width};
+    use super::{draw, handle_key_event, remove_last_grapheme, truncate_to_width};
     use crate::desktop::DesktopEntry;
 
     fn application(index: usize) -> DesktopEntry {
@@ -365,7 +392,105 @@ mod tests {
             generic_name: Some(format!("Description {index}")),
             exec: vec![format!("application-{index}")],
             working_dir: None,
+            terminal: false,
         }
+    }
+
+    fn apply_key(
+        kind: KeyEventKind,
+        code: KeyCode,
+        applications: &[DesktopEntry],
+        query: &mut String,
+        results: &mut Vec<crate::search::SearchResult>,
+        selected: &mut usize,
+    ) {
+        assert!(handle_key_event(
+            KeyEvent::new_with_kind(code, KeyModifiers::empty(), kind),
+            applications,
+            query,
+            results,
+            selected,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn removes_complete_unicode_graphemes() {
+        let mut value = "a👩‍💻e\u{301}".to_owned();
+
+        remove_last_grapheme(&mut value);
+        assert_eq!(value, "a👩‍💻");
+
+        remove_last_grapheme(&mut value);
+        assert_eq!(value, "a");
+    }
+
+    #[test]
+    fn repeats_match_pressed_keys_for_query_and_navigation() {
+        let applications = (0..3).map(application).collect::<Vec<_>>();
+        let mut press_query = String::new();
+        let mut repeat_query = String::new();
+        let mut press_results = crate::search::filter(&applications, &press_query);
+        let mut repeat_results = crate::search::filter(&applications, &repeat_query);
+        let mut press_selected = 0;
+        let mut repeat_selected = 0;
+
+        apply_key(
+            KeyEventKind::Press,
+            KeyCode::Char('a'),
+            &applications,
+            &mut press_query,
+            &mut press_results,
+            &mut press_selected,
+        );
+        apply_key(
+            KeyEventKind::Repeat,
+            KeyCode::Char('a'),
+            &applications,
+            &mut repeat_query,
+            &mut repeat_results,
+            &mut repeat_selected,
+        );
+        assert_eq!(press_query, repeat_query);
+        assert_eq!(press_results, repeat_results);
+
+        apply_key(
+            KeyEventKind::Press,
+            KeyCode::Up,
+            &applications,
+            &mut press_query,
+            &mut press_results,
+            &mut press_selected,
+        );
+        apply_key(
+            KeyEventKind::Repeat,
+            KeyCode::Up,
+            &applications,
+            &mut repeat_query,
+            &mut repeat_results,
+            &mut repeat_selected,
+        );
+        assert_eq!(press_selected, repeat_selected);
+
+        apply_key(
+            KeyEventKind::Press,
+            KeyCode::Backspace,
+            &applications,
+            &mut press_query,
+            &mut press_results,
+            &mut press_selected,
+        );
+        apply_key(
+            KeyEventKind::Repeat,
+            KeyCode::Backspace,
+            &applications,
+            &mut repeat_query,
+            &mut repeat_results,
+            &mut repeat_selected,
+        );
+        assert_eq!(press_query, repeat_query);
+        assert_eq!(press_results, repeat_results);
+        assert_eq!(press_selected, repeat_selected);
     }
 
     #[test]

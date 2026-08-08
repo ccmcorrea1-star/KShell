@@ -17,10 +17,17 @@ pub fn launch(application: &DesktopEntry) -> io::Result<Child> {
     if let Some(working_dir) = &application.working_dir {
         command.current_dir(working_dir);
     }
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    if application.terminal {
+        command
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+    } else {
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    }
 
     #[cfg(unix)]
     unsafe {

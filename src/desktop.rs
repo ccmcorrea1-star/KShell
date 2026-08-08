@@ -10,6 +10,7 @@ pub struct DesktopEntry {
     pub generic_name: Option<String>,
     pub exec: Vec<String>,
     pub working_dir: Option<PathBuf>,
+    pub terminal: bool,
 }
 
 pub fn load_applications() -> Vec<DesktopEntry> {
@@ -17,23 +18,15 @@ pub fn load_applications() -> Vec<DesktopEntry> {
     let mut seen_files = HashSet::new();
 
     for directory in application_directories() {
-        let entries = match fs::read_dir(directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(_) => continue,
-        };
+        let mut files = Vec::new();
+        collect_desktop_files(&directory, &mut files);
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|extension| extension.to_str()) != Some("desktop") {
-                continue;
-            }
-
-            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        for path in files {
+            let Some(file_id) = desktop_file_id(&directory, &path) else {
                 continue;
             };
 
-            if !seen_files.insert(file_name.to_owned()) {
+            if !seen_files.insert(file_id) {
                 continue;
             }
 
@@ -45,6 +38,33 @@ pub fn load_applications() -> Vec<DesktopEntry> {
 
     applications.sort_by_cached_key(|application| application.name.to_lowercase());
     applications
+}
+
+fn collect_desktop_files(directory: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+            collect_desktop_files(&path, files);
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("desktop") {
+            files.push(path);
+        }
+    }
+}
+
+fn desktop_file_id(root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    let mut components = relative.components();
+    let first = components.next()?.as_os_str().to_str()?.to_owned();
+    let mut id = first;
+    for component in components {
+        id.push('-');
+        id.push_str(component.as_os_str().to_str()?);
+    }
+    Some(id)
 }
 
 fn application_directories() -> Vec<PathBuf> {
@@ -106,7 +126,7 @@ fn parse_desktop_entry(contents: &str, path: &Path) -> Option<DesktopEntry> {
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
-        values.push((key, value.trim()));
+        values.push((key.trim(), value.trim()));
     }
 
     let get = |key: &str| {
@@ -119,6 +139,8 @@ fn parse_desktop_entry(contents: &str, path: &Path) -> Option<DesktopEntry> {
     if get("Type") != Some("Application")
         || get("Hidden") == Some("true")
         || get("NoDisplay") == Some("true")
+        || !is_visible_in_current_desktop(get("OnlyShowIn"), get("NotShowIn"))
+        || !try_exec_is_available(get("TryExec"))
     {
         return None;
     }
@@ -140,7 +162,82 @@ fn parse_desktop_entry(contents: &str, path: &Path) -> Option<DesktopEntry> {
             .map(unescape_value)
             .filter(|path| !path.is_empty())
             .map(PathBuf::from),
+        terminal: get("Terminal") == Some("true"),
     })
+}
+
+fn is_visible_in_current_desktop(only_show_in: Option<&str>, not_show_in: Option<&str>) -> bool {
+    let current_desktops = env::var("XDG_CURRENT_DESKTOP")
+        .ok()
+        .map(|value| {
+            value
+                .split(':')
+                .filter(|desktop| !desktop.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if let Some(desktops) = only_show_in {
+        let allowed = desktops
+            .split(';')
+            .filter(|desktop| !desktop.is_empty())
+            .any(|desktop| current_desktops.iter().any(|current| current == desktop));
+        if !allowed {
+            return false;
+        }
+    }
+
+    if let Some(desktops) = not_show_in {
+        if desktops
+            .split(';')
+            .any(|desktop| current_desktops.iter().any(|current| current == desktop))
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn try_exec_is_available(value: Option<&str>) -> bool {
+    let Some(value) = value.map(unescape_value).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+
+    let candidates = if Path::new(&value).is_absolute() {
+        vec![PathBuf::from(value)]
+    } else {
+        env::var_os("PATH")
+            .map(|path| {
+                env::split_paths(&path)
+                    .map(|directory| directory.join(&value))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    candidates.into_iter().any(|path| is_executable_file(&path))
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn preferred_locales() -> Vec<String> {
@@ -244,7 +341,11 @@ fn parse_exec(
     let mut expanded = Vec::with_capacity(words.len());
 
     for word in words {
-        if word == "%i" {
+        if word.quoted_field_code && contains_field_code(&word.value) {
+            return Err(());
+        }
+
+        if word.value == "%i" {
             if let Some(icon) = icon.filter(|icon| !icon.is_empty()) {
                 expanded.push("--icon".to_owned());
                 expanded.push(icon.to_owned());
@@ -252,8 +353,12 @@ fn parse_exec(
             continue;
         }
 
-        let mut value = String::with_capacity(word.len());
-        let mut characters = word.chars();
+        if contains_standalone_only_field_code(&word.value) && word.value.len() != 2 {
+            return Err(());
+        }
+
+        let mut value = String::with_capacity(word.value.len());
+        let mut characters = word.value.chars();
         while let Some(character) = characters.next() {
             if character != '%' {
                 value.push(character);
@@ -278,12 +383,18 @@ fn parse_exec(
     Ok(expanded)
 }
 
-fn split_exec_words(command_line: &str) -> Result<Vec<String>, ()> {
+struct ExecWord {
+    value: String,
+    quoted_field_code: bool,
+}
+
+fn split_exec_words(command_line: &str) -> Result<Vec<ExecWord>, ()> {
     let mut words = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
     let mut escaped = false;
     let mut has_content = false;
+    let mut quoted_field_code = false;
 
     for character in command_line.chars() {
         if escaped {
@@ -295,14 +406,23 @@ fn split_exec_words(command_line: &str) -> Result<Vec<String>, ()> {
 
         match character {
             '\\' => escaped = true,
+            '%' if in_quotes => {
+                current.push(character);
+                quoted_field_code = true;
+                has_content = true;
+            }
             '"' => {
                 in_quotes = !in_quotes;
                 has_content = true;
             }
             character if character.is_whitespace() && !in_quotes => {
                 if has_content {
-                    words.push(std::mem::take(&mut current));
+                    words.push(ExecWord {
+                        value: std::mem::take(&mut current),
+                        quoted_field_code,
+                    });
                     has_content = false;
+                    quoted_field_code = false;
                 }
             }
             character => {
@@ -317,10 +437,24 @@ fn split_exec_words(command_line: &str) -> Result<Vec<String>, ()> {
     }
 
     if has_content {
-        words.push(current);
+        words.push(ExecWord {
+            value: current,
+            quoted_field_code,
+        });
     }
 
     Ok(words)
+}
+
+fn contains_field_code(value: &str) -> bool {
+    value
+        .as_bytes()
+        .windows(2)
+        .any(|code| code[0] == b'%' && code[1].is_ascii_alphabetic())
+}
+
+fn contains_standalone_only_field_code(value: &str) -> bool {
+    value.contains("%F") || value.contains("%U") || value.contains("%i")
 }
 
 #[cfg(test)]
@@ -366,6 +500,47 @@ mod tests {
         assert_eq!(
             command,
             vec!["browser", "--new-window", "--name", "A quoted value"]
+        );
+    }
+
+    #[test]
+    fn trims_entry_keys_and_reads_terminal_metadata() {
+        let entry = parse_desktop_entry(
+            "[Desktop Entry]\nType=Application\nName = Example\nExec = example\nTerminal=true\n",
+            Path::new("example.desktop"),
+        )
+        .expect("valid application");
+
+        assert_eq!(entry.name, "Example");
+        assert!(entry.terminal);
+    }
+
+    #[test]
+    fn rejects_field_codes_inside_quoted_arguments() {
+        assert!(parse_exec(
+            "browser \"%i\"",
+            "Browser",
+            Path::new("browser.desktop"),
+            Some("browser"),
+        )
+        .is_err());
+        assert!(parse_exec(
+            "browser --files%F",
+            "Browser",
+            Path::new("browser.desktop"),
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn builds_desktop_file_ids_from_relative_paths() {
+        assert_eq!(
+            super::desktop_file_id(
+                Path::new("/usr/share/applications"),
+                Path::new("/usr/share/applications/foo/bar.desktop"),
+            ),
+            Some("foo-bar.desktop".to_owned())
         );
     }
 }
