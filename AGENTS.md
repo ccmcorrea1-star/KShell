@@ -9,7 +9,6 @@ Klauncher is a Rust 2021 binary crate for a minimal Wayland/Niri application lau
 - `src/core/search.rs` implements fuzzy matching and ranking.
 - `src/core/launch.rs` starts selected applications in their own Unix session.
 - `src/ui/gtk.rs` owns the GTK4/gtk4-layer-shell launcher interface.
-- `src/ui/tui.rs` keeps the temporary Crossterm/Ratatui implementation during migration.
 - `contrib/niri/klauncher.kdl` contains the optional Niri keybinding/window configuration.
 - Tests are colocated in `#[cfg(test)]` modules; there is currently no separate `tests/` directory.
 
@@ -34,7 +33,7 @@ Use stable Rust 2021 and four-space indentation; let `rustfmt` determine layout.
 
 ## Testing Guidelines
 
-Add focused unit tests beside the implementation they cover. Name tests by behavior, such as `parses_application_and_expands_exec_fields`. Cover parser edge cases, fuzzy ranking, terminal rendering, and lifecycle-sensitive behavior where practical. Run `cargo test` and `cargo fmt --check` before submitting changes.
+Add focused unit tests beside the implementation they cover. Name tests by behavior, such as `parses_application_and_expands_exec_fields`. Cover parser edge cases, fuzzy ranking, UI rendering, and lifecycle-sensitive behavior where practical. Run `cargo test` and `cargo fmt --check` before submitting changes.
 
 ## Commit & Pull Request Guidelines
 

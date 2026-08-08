@@ -6,10 +6,6 @@ description = "A fast, minimal desktop application launcher for Wayland and Niri
 license = "MIT"
 
 [dependencies]
-crossterm = "0.29"
 gtk4 = { version = "0.11", features = ["v4_12"] }
 gtk4-layer-shell = "0.8"
 libc = "0.2"
-ratatui = "0.30"
-unicode-segmentation = "1.13"
-unicode-width = "0.2"

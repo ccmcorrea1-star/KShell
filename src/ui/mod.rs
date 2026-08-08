@@ -1,6 +1,4 @@
 mod gtk;
-#[allow(dead_code)]
-pub mod tui;
 
 use std::error::Error;
 use std::rc::Rc;
