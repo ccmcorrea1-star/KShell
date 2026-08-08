@@ -83,7 +83,6 @@ mod tests {
         DesktopEntry {
             name: name.to_owned(),
             generic_name: None,
-            icon: None,
             exec: vec![name.to_owned()],
             working_dir: None,
         }

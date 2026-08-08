@@ -2,7 +2,9 @@ use std::io::{self, Stdout};
 
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEventKind, KeyModifiers,
+    },
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -11,21 +13,17 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{
+        Block, Borders, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph, Scrollbar,
+        ScrollbarOrientation, ScrollbarState,
+    },
     Terminal,
 };
-use ratatui_image::Image;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{
-    desktop::DesktopEntry,
-    icon::{IconCache, PickerDiagnostics, ICON_CELL_SIZE},
-    search,
-};
+use crate::{desktop::DesktopEntry, search};
 
-const ICON_WIDTH: u16 = ICON_CELL_SIZE.width;
-const CONTENT_HEIGHT: u16 = ICON_CELL_SIZE.height;
-const ITEM_HEIGHT: u16 = 3;
+const ITEM_HEIGHT: u16 = 1;
 
 pub struct TerminalSession {
     terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -36,8 +34,8 @@ impl TerminalSession {
     pub fn enter() -> io::Result<Self> {
         terminal::enable_raw_mode()?;
         let mut stdout = io::stdout();
-        if let Err(error) = execute!(stdout, EnterAlternateScreen, Hide) {
-            let _ = execute!(stdout, LeaveAlternateScreen, Show);
+        if let Err(error) = execute!(stdout, EnableFocusChange, EnterAlternateScreen, Hide) {
+            let _ = execute!(stdout, DisableFocusChange, LeaveAlternateScreen, Show);
             let _ = terminal::disable_raw_mode();
             return Err(error);
         }
@@ -49,7 +47,7 @@ impl TerminalSession {
             }),
             Err(error) => {
                 let mut stdout = io::stdout();
-                let _ = execute!(stdout, LeaveAlternateScreen, Show);
+                let _ = execute!(stdout, DisableFocusChange, LeaveAlternateScreen, Show);
                 let _ = terminal::disable_raw_mode();
                 Err(error)
             }
@@ -62,7 +60,11 @@ impl TerminalSession {
 
     pub fn leave(mut self) -> io::Result<()> {
         terminal::disable_raw_mode()?;
-        execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(
+            self.terminal.backend_mut(),
+            DisableFocusChange,
+            LeaveAlternateScreen
+        )?;
         self.terminal.show_cursor()?;
         self.restored = true;
         Ok(())
@@ -76,7 +78,11 @@ impl Drop for TerminalSession {
         }
 
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+        let _ = execute!(
+            self.terminal.backend_mut(),
+            DisableFocusChange,
+            LeaveAlternateScreen
+        );
         let _ = self.terminal.show_cursor();
     }
 }
@@ -84,25 +90,13 @@ impl Drop for TerminalSession {
 pub fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     applications: &[DesktopEntry],
-    picker: ratatui_image::picker::Picker,
-    picker_diagnostics: PickerDiagnostics,
 ) -> io::Result<RunResult> {
     let mut query = String::new();
     let mut results = search::filter(applications, &query);
     let mut selected = 0;
-    let mut icon_cache = IconCache::new(picker, picker_diagnostics);
 
     loop {
-        terminal.draw(|frame| {
-            draw(
-                frame,
-                applications,
-                &query,
-                &results,
-                selected,
-                &mut icon_cache,
-            )
-        })?;
+        terminal.draw(|frame| draw(frame, applications, &query, &results, selected))?;
 
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -110,14 +104,13 @@ pub fn run(
                     || (key.code == KeyCode::Char('c')
                         && key.modifiers.contains(KeyModifiers::CONTROL))
                 {
-                    return Ok(RunResult::new(None, icon_cache.diagnostics().clone()));
+                    return Ok(RunResult::new(None));
                 }
 
                 match key.code {
                     KeyCode::Enter => {
                         return Ok(RunResult::new(
                             results.get(selected).map(|result| result.index),
-                            icon_cache.diagnostics().clone(),
                         ));
                     }
                     KeyCode::Up if !results.is_empty() => {
@@ -147,7 +140,7 @@ pub fn run(
                     _ => {}
                 }
             }
-            Event::Resize(_, _) => icon_cache.on_resize(),
+            Event::FocusLost => return Ok(RunResult::new(None)),
             _ => {}
         }
     }
@@ -155,15 +148,89 @@ pub fn run(
 
 pub struct RunResult {
     pub selected: Option<usize>,
-    pub picker_diagnostics: PickerDiagnostics,
 }
 
 impl RunResult {
-    fn new(selected: Option<usize>, picker_diagnostics: PickerDiagnostics) -> Self {
-        Self {
-            selected,
-            picker_diagnostics,
+    fn new(selected: Option<usize>) -> Self {
+        Self { selected }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ItemLayout {
+    application_index: usize,
+    selected: bool,
+}
+
+#[derive(Clone, Debug)]
+struct UiLayout {
+    search_area: Rect,
+    result_area: Rect,
+    footer_area: Rect,
+    list_content_area: Rect,
+    scrollbar_area: Option<Rect>,
+    offset: usize,
+    visible_items: usize,
+    items: Vec<ItemLayout>,
+}
+
+fn calculate_layout(area: Rect, results: &[search::SearchResult], selected: usize) -> UiLayout {
+    let [search_area, result_area, footer_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+
+    let list_block = Block::default().padding(Padding::horizontal(1));
+    let list_area = list_block.inner(result_area);
+    let mut items = Vec::new();
+    let mut offset = 0;
+    let mut visible_items = 0;
+
+    if !results.is_empty() && list_area.height >= ITEM_HEIGHT {
+        visible_items = usize::from(list_area.height / ITEM_HEIGHT);
+        let max_offset = results.len().saturating_sub(visible_items);
+        offset = selected
+            .saturating_sub(visible_items.saturating_sub(1))
+            .min(max_offset);
+
+        for (visible_index, result) in results.iter().skip(offset).take(visible_items).enumerate() {
+            items.push(ItemLayout {
+                application_index: result.index,
+                selected: offset + visible_index == selected,
+            });
         }
+    }
+
+    let scrollbar_area = (results.len() > visible_items && list_area.width >= 2).then(|| {
+        Rect::new(
+            list_area.right().saturating_sub(1),
+            list_area.y,
+            1,
+            list_area.height,
+        )
+    });
+    let list_content_area = scrollbar_area
+        .map(|scrollbar_area| {
+            Rect::new(
+                list_area.x,
+                list_area.y,
+                list_area.width.saturating_sub(scrollbar_area.width),
+                list_area.height,
+            )
+        })
+        .unwrap_or(list_area);
+
+    UiLayout {
+        search_area,
+        result_area,
+        footer_area,
+        list_content_area,
+        scrollbar_area,
+        offset,
+        visible_items,
+        items,
     }
 }
 
@@ -173,109 +240,77 @@ fn draw(
     query: &str,
     results: &[search::SearchResult],
     selected: usize,
-    icon_cache: &mut IconCache,
 ) {
-    let [search_area, result_area, footer_area] = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(1),
-        Constraint::Length(1),
-    ])
-    .areas(frame.area());
+    let layout = calculate_layout(frame.area(), results, selected);
 
     let search_box = Paragraph::new(Line::from(vec![
         Span::styled("> ", Style::default().fg(Color::LightBlue)),
-        Span::raw(query),
+        Span::styled(query, Style::default().fg(Color::White)),
     ]))
-    .block(Block::default().borders(Borders::ALL));
-    frame.render_widget(search_box, search_area);
+    .style(Style::default().fg(Color::Gray))
+    .block(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(Color::DarkGray))
+            .padding(Padding::new(1, 1, 1, 0)),
+    );
+    frame.render_widget(search_box, layout.search_area);
 
-    let list_block = Block::default().borders(Borders::ALL);
-    let list_area = list_block.inner(result_area);
-    frame.render_widget(list_block, result_area);
+    frame.render_widget(
+        Block::default().padding(Padding::horizontal(1)),
+        layout.result_area,
+    );
 
     if results.is_empty() {
-        frame.render_widget(Paragraph::new("No applications found"), list_area);
-    } else if list_area.height >= ITEM_HEIGHT {
-        let visible_items = usize::from(list_area.height / ITEM_HEIGHT);
-        let max_offset = results.len().saturating_sub(visible_items);
-        let offset = selected
-            .saturating_sub(visible_items.saturating_sub(1))
-            .min(max_offset);
-        let item_rects =
-            Layout::vertical(vec![Constraint::Length(ITEM_HEIGHT); visible_items]).split(list_area);
+        frame.render_widget(
+            Paragraph::new("No applications found").style(Style::default().fg(Color::DarkGray)),
+            layout.list_content_area,
+        );
+    } else {
+        let name_width = layout.list_content_area.width.saturating_sub(2);
+        let list_items = layout
+            .items
+            .iter()
+            .map(|item| {
+                let application = &applications[item.application_index];
+                ListItem::new(truncate_to_width(application.name.as_str(), name_width))
+            })
+            .collect::<Vec<_>>();
+        let selected_item = layout.items.iter().position(|item| item.selected);
+        let mut list_state = ListState::default();
+        list_state.select(selected_item);
 
-        // Paint every item background first. This leaves a clean Ratatui buffer for the
-        // following text and image passes when filtering, scrolling, or resizing.
-        for visible_index in 0..visible_items {
-            let item_rect: Rect = item_rects[visible_index];
-            let is_selected = offset + visible_index == selected;
-            let item_style = if is_selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
+        let list = List::new(list_items)
+            .style(Style::default().fg(Color::Gray))
+            .highlight_style(
                 Style::default()
-            };
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_spacing(HighlightSpacing::Always)
+            .highlight_symbol("› ");
+        frame.render_stateful_widget(list, layout.list_content_area, &mut list_state);
 
-            frame.render_widget(Block::default().style(item_style), item_rect);
-        }
-
-        // Paint the two text lines in the area to the right of the fixed 4-cell icon slot.
-        for (visible_index, result) in results.iter().skip(offset).take(visible_items).enumerate() {
-            let application = &applications[result.index];
-            let item_rect: Rect = item_rects[visible_index];
-            let text_rect = text_rect(item_rect);
-            let [name_rect, description_rect] =
-                Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(text_rect);
-            let is_selected = offset + visible_index == selected;
-            let item_style = if is_selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            };
-
-            let generic_name = application.generic_name.as_deref().unwrap_or_default();
-            let name = truncate_to_width(application.name.as_str(), name_rect.width);
-            let description = truncate_to_width(generic_name, description_rect.width);
-
-            frame.render_widget(Paragraph::new(name).style(item_style), name_rect);
-            frame.render_widget(
-                Paragraph::new(description).style(item_style),
-                description_rect,
-            );
-        }
-
-        // Icons are the last pass. Never render a fixed 4x2 protocol into a clipped rectangle.
-        if list_area.width >= ICON_WIDTH {
-            for (visible_index, result) in
-                results.iter().skip(offset).take(visible_items).enumerate()
-            {
-                let application = &applications[result.index];
-                let item_rect: Rect = item_rects[visible_index];
-                let icon_rect = Rect::new(item_rect.x, item_rect.y, ICON_WIDTH, CONTENT_HEIGHT);
-                if let Some(protocol) = icon_cache.protocol_for(application.icon.as_deref()) {
-                    frame.render_widget(Image::new(protocol), icon_rect);
-                }
-            }
+        if let Some(scrollbar_area) = layout.scrollbar_area {
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .thumb_symbol("▐")
+                .thumb_style(Style::default().fg(Color::DarkGray))
+                .track_symbol(None)
+                .begin_symbol(None)
+                .end_symbol(None);
+            let mut scrollbar_state = ScrollbarState::new(results.len())
+                .position(layout.offset)
+                .viewport_content_length(layout.visible_items);
+            frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
         }
     }
 
     frame.render_widget(
         Paragraph::new("↑ ↓ navegar    ↵ abrir    esc sair")
-            .style(Style::default().fg(Color::DarkGray)),
-        footer_area,
+            .style(Style::default().fg(Color::DarkGray))
+            .block(Block::default().padding(Padding::horizontal(1))),
+        layout.footer_area,
     );
-}
-
-fn text_rect(item_rect: Rect) -> Rect {
-    if item_rect.width < ICON_WIDTH {
-        return Rect::new(item_rect.x, item_rect.y, item_rect.width, CONTENT_HEIGHT);
-    }
-
-    Rect::new(
-        item_rect.x + ICON_WIDTH,
-        item_rect.y,
-        item_rect.width - ICON_WIDTH,
-        CONTENT_HEIGHT,
-    )
 }
 
 fn truncate_to_width(value: &str, width: u16) -> String {
@@ -319,32 +354,18 @@ fn truncate_to_width(value: &str, width: u16) -> String {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{backend::TestBackend, layout::Rect, Terminal};
+    use ratatui::{backend::TestBackend, Terminal};
 
-    use super::{draw, text_rect, truncate_to_width, IconCache, PickerDiagnostics};
+    use super::{draw, truncate_to_width};
     use crate::desktop::DesktopEntry;
 
     fn application(index: usize) -> DesktopEntry {
         DesktopEntry {
             name: format!("Application {index}"),
             generic_name: Some(format!("Description {index}")),
-            icon: None,
             exec: vec![format!("application-{index}")],
             working_dir: None,
         }
-    }
-
-    fn test_icon_cache() -> IconCache {
-        let picker = ratatui_image::picker::Picker::halfblocks();
-        let diagnostics = PickerDiagnostics {
-            protocol: picker.protocol_type(),
-            cell_size: picker.font_size(),
-            capabilities: Vec::new(),
-            query_result: "test".to_owned(),
-            term: None,
-            term_program: None,
-        };
-        IconCache::new(picker, diagnostics)
     }
 
     #[test]
@@ -369,40 +390,75 @@ mod tests {
     }
 
     #[test]
-    fn reserves_exactly_four_cells_for_icons() {
-        assert_eq!(text_rect(Rect::new(2, 3, 16, 3)), Rect::new(6, 3, 12, 2));
+    fn names_render_without_image_dependencies() {
+        let applications = vec![application(0), application(1)];
+        let results = crate::search::filter(&applications, "");
+        let mut terminal = Terminal::new(TestBackend::new(48, 8)).unwrap();
+
+        terminal
+            .draw(|frame| draw(frame, &applications, "", &results, 0))
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("Application 0"));
+        assert!(rendered.contains("Application 1"));
+        assert!(!rendered.contains("Description"));
     }
 
     #[test]
-    fn repeated_search_navigation_scroll_and_resize_frames_are_stable() {
+    fn scrollbar_is_rendered_only_when_results_overflow() {
+        let applications = (0..10).map(application).collect::<Vec<_>>();
+        let results = crate::search::filter(&applications, "");
+        let mut terminal = Terminal::new(TestBackend::new(48, 8)).unwrap();
+
+        terminal
+            .draw(|frame| draw(frame, &applications, "", &results, 0))
+            .unwrap();
+        let overflow_rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .any(|cell| cell.symbol() == "▐");
+        assert!(overflow_rendered);
+
+        terminal.backend_mut().resize(48, 20);
+        terminal
+            .draw(|frame| draw(frame, &applications, "", &results, 0))
+            .unwrap();
+        let fits_rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .any(|cell| cell.symbol() == "▐");
+        assert!(!fits_rendered);
+    }
+
+    #[test]
+    fn repeated_search_navigation_and_resize_frames_are_stable() {
         let applications = (0..24).map(application).collect::<Vec<_>>();
         let mut terminal = Terminal::new(TestBackend::new(48, 18)).unwrap();
-        let mut icon_cache = test_icon_cache();
 
         for (query, next_selected, width, height) in [
             ("", 0, 48, 18),
             ("a", 1, 48, 18),
-            ("ap", 5, 48, 18),
-            ("app", 10, 32, 12),
+            ("ap", 5, 48, 12),
+            ("app", 10, 32, 8),
             ("", 20, 64, 21),
             ("application 2", 0, 64, 21),
-            ("", 23, 40, 9),
+            ("", 23, 40, 6),
         ] {
             let results = crate::search::filter(&applications, query);
             let selected = next_selected.min(results.len().saturating_sub(1));
             terminal.backend_mut().resize(width, height);
-            icon_cache.on_resize();
             terminal
-                .draw(|frame| {
-                    draw(
-                        frame,
-                        &applications,
-                        query,
-                        &results,
-                        selected,
-                        &mut icon_cache,
-                    )
-                })
+                .draw(|frame| draw(frame, &applications, query, &results, selected))
                 .unwrap();
         }
     }

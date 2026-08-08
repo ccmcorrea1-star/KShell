@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 pub struct DesktopEntry {
     pub name: String,
     pub generic_name: Option<String>,
-    pub icon: Option<String>,
     pub exec: Vec<String>,
     pub working_dir: Option<PathBuf>,
 }
@@ -136,7 +135,6 @@ fn parse_desktop_entry(contents: &str, path: &Path) -> Option<DesktopEntry> {
     Some(DesktopEntry {
         name,
         generic_name: localized_value(&values, "GenericName", preferred_locales()),
-        icon,
         exec,
         working_dir: get("Path")
             .map(unescape_value)

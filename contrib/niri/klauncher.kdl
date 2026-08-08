@@ -1,10 +1,10 @@
-// Klaucher integration for niri.
+// Klauncher integration for niri.
 // Include this file at the end of ~/.config/niri/config.kdl so this bind
 // replaces any existing Mod+Space launcher binding.
 
 window-rule {
     // The anchors keep this rule scoped to the dedicated Kitty app-id.
-    match app-id="^klaucher$"
+    match app-id="^klauncher$"
 
     // Floating windows are centered by niri by default.
     open-floating true
@@ -29,6 +29,6 @@ window-rule {
 binds {
     // niri spawn passes each argument separately; no shell is needed.
     Mod+Space repeat=false {
-        spawn "kitty" "--class" "klaucher" "--override" "hide_window_decorations=yes" "klaucher"
+        spawn "kitty" "--class" "klauncher" "--override" "hide_window_decorations=yes" "klauncher"
     }
 }
