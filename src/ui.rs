@@ -1,4 +1,6 @@
 use std::io::{self, Stdout};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use crossterm::{
     cursor::{Hide, Show},
@@ -25,6 +27,87 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::{desktop::DesktopEntry, search};
 
 const ITEM_HEIGHT: u16 = 1;
+const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+extern "C" fn termination_signal_handler(_signal: libc::c_int) {
+    TERMINATION_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub struct SignalGuard {
+    #[cfg(unix)]
+    previous_sigterm: libc::sigaction,
+    #[cfg(unix)]
+    previous_sighup: libc::sigaction,
+}
+
+impl SignalGuard {
+    pub fn install() -> io::Result<Self> {
+        TERMINATION_REQUESTED.store(false, Ordering::SeqCst);
+
+        #[cfg(unix)]
+        {
+            let previous_sigterm = install_signal_handler(libc::SIGTERM)?;
+            let previous_sighup = match install_signal_handler(libc::SIGHUP) {
+                Ok(previous) => previous,
+                Err(error) => {
+                    restore_signal_handler(libc::SIGTERM, &previous_sigterm);
+                    return Err(error);
+                }
+            };
+
+            Ok(Self {
+                previous_sigterm,
+                previous_sighup,
+            })
+        }
+
+        #[cfg(not(unix))]
+        {
+            Ok(Self {})
+        }
+    }
+}
+
+impl Drop for SignalGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            restore_signal_handler(libc::SIGTERM, &self.previous_sigterm);
+            restore_signal_handler(libc::SIGHUP, &self.previous_sighup);
+        }
+    }
+}
+
+pub fn termination_requested() -> bool {
+    TERMINATION_REQUESTED.load(Ordering::SeqCst)
+}
+
+#[cfg(unix)]
+fn install_signal_handler(signal: libc::c_int) -> io::Result<libc::sigaction> {
+    let mut action = unsafe { std::mem::zeroed::<libc::sigaction>() };
+    action.sa_sigaction = termination_signal_handler as *const () as libc::sighandler_t;
+    action.sa_flags = 0;
+    unsafe {
+        libc::sigemptyset(&mut action.sa_mask);
+    }
+
+    let mut previous = unsafe { std::mem::zeroed::<libc::sigaction>() };
+    if unsafe { libc::sigaction(signal, &action, &mut previous) } == -1 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(previous)
+    }
+}
+
+#[cfg(unix)]
+fn restore_signal_handler(signal: libc::c_int, action: &libc::sigaction) {
+    unsafe {
+        libc::sigaction(signal, action, std::ptr::null_mut());
+    }
+}
 
 pub struct TerminalSession {
     terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -97,18 +180,38 @@ pub fn run(
     let mut selected = 0;
 
     loop {
+        if termination_requested() {
+            return Ok(RunResult::new(None));
+        }
+
         terminal.draw(|frame| draw(frame, applications, &query, &results, selected))?;
 
-        match event::read()? {
-            Event::Key(key) => {
-                if let Some(result) =
-                    handle_key_event(key, applications, &mut query, &mut results, &mut selected)
-                {
-                    return Ok(result);
+        let event_ready = match event::poll(EVENT_POLL_INTERVAL) {
+            Ok(event_ready) => event_ready,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        if !event_ready {
+            continue;
+        }
+        if termination_requested() {
+            return Ok(RunResult::new(None));
+        }
+
+        match event::read() {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+            Ok(event) => match event {
+                Event::Key(key) => {
+                    if let Some(result) =
+                        handle_key_event(key, applications, &mut query, &mut results, &mut selected)
+                    {
+                        return Ok(result);
+                    }
                 }
-            }
-            Event::FocusLost => return Ok(RunResult::new(None)),
-            _ => {}
+                Event::FocusLost => return Ok(RunResult::new(None)),
+                _ => {}
+            },
         }
     }
 }
@@ -383,7 +486,11 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use ratatui::{backend::TestBackend, Terminal};
 
-    use super::{draw, handle_key_event, remove_last_grapheme, truncate_to_width};
+    use super::{
+        draw, handle_key_event, remove_last_grapheme, termination_requested, truncate_to_width,
+    };
+    #[cfg(unix)]
+    use super::{termination_signal_handler, TERMINATION_REQUESTED};
     use crate::desktop::DesktopEntry;
 
     fn application(index: usize) -> DesktopEntry {
@@ -394,6 +501,39 @@ mod tests {
             working_dir: None,
             terminal: false,
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn termination_handler_only_records_a_request_for_the_event_loop() {
+        TERMINATION_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        termination_signal_handler(libc::SIGTERM);
+
+        assert!(termination_requested());
+        TERMINATION_REQUESTED.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn ctrl_c_remains_a_normal_cancel_action() {
+        let applications = vec![application(0)];
+        let mut query = String::new();
+        let mut results = crate::search::filter(&applications, &query);
+        let mut selected = 0;
+
+        let result = handle_key_event(
+            KeyEvent::new_with_kind(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL,
+                KeyEventKind::Press,
+            ),
+            &applications,
+            &mut query,
+            &mut results,
+            &mut selected,
+        );
+
+        assert!(matches!(result, Some(result) if result.selected.is_none()));
     }
 
     fn apply_key(

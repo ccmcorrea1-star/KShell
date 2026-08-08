@@ -49,7 +49,9 @@ fn collect_desktop_files(directory: &Path, files: &mut Vec<PathBuf>) {
         let path = entry.path();
         if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
             collect_desktop_files(&path, files);
-        } else if path.extension().and_then(|extension| extension.to_str()) == Some("desktop") {
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("desktop")
+            && fs::metadata(&path).is_ok_and(|metadata| metadata.is_file())
+        {
             files.push(path);
         }
     }
@@ -101,8 +103,36 @@ fn application_directories() -> Vec<PathBuf> {
 }
 
 fn parse_desktop_file(path: &Path) -> io::Result<Option<DesktopEntry>> {
-    let contents = fs::read_to_string(path)?;
+    let contents = read_desktop_file(path)?;
     Ok(parse_desktop_entry(&contents, path))
+}
+
+#[cfg(unix)]
+fn read_desktop_file(path: &Path) -> io::Result<String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut options = fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    let mut file = options.open(path)?;
+
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "desktop entry is not a regular file",
+        ));
+    }
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+#[cfg(not(unix))]
+fn read_desktop_file(path: &Path) -> io::Result<String> {
+    fs::read_to_string(path)
 }
 
 fn parse_desktop_entry(contents: &str, path: &Path) -> Option<DesktopEntry> {
@@ -178,26 +208,38 @@ fn is_visible_in_current_desktop(only_show_in: Option<&str>, not_show_in: Option
         })
         .unwrap_or_default();
 
-    if let Some(desktops) = only_show_in {
-        let allowed = desktops
-            .split(';')
-            .filter(|desktop| !desktop.is_empty())
-            .any(|desktop| current_desktops.iter().any(|current| current == desktop));
-        if !allowed {
-            return false;
-        }
-    }
+    is_visible_in_desktops(
+        &current_desktops
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        only_show_in,
+        not_show_in,
+    )
+}
 
-    if let Some(desktops) = not_show_in {
-        if desktops
-            .split(';')
-            .any(|desktop| current_desktops.iter().any(|current| current == desktop))
+fn is_visible_in_desktops(
+    current_desktops: &[&str],
+    only_show_in: Option<&str>,
+    not_show_in: Option<&str>,
+) -> bool {
+    for current in current_desktops
+        .iter()
+        .copied()
+        .filter(|desktop| !desktop.is_empty())
+    {
+        if only_show_in
+            .is_some_and(|desktops| desktops.split(';').any(|desktop| desktop == current))
+        {
+            return true;
+        }
+        if not_show_in.is_some_and(|desktops| desktops.split(';').any(|desktop| desktop == current))
         {
             return false;
         }
     }
 
-    true
+    only_show_in.is_none()
 }
 
 fn try_exec_is_available(value: Option<&str>) -> bool {
@@ -241,43 +283,60 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 fn preferred_locales() -> Vec<String> {
-    let mut locales = Vec::new();
+    let lc_all = env::var_os("LC_ALL").map(|locale| locale.to_string_lossy().into_owned());
+    let lc_messages =
+        env::var_os("LC_MESSAGES").map(|locale| locale.to_string_lossy().into_owned());
+    let lang = env::var_os("LANG").map(|locale| locale.to_string_lossy().into_owned());
 
-    if let Some(language) = env::var_os("LANGUAGE") {
-        locales.extend(
-            language
-                .to_string_lossy()
-                .split(':')
-                .filter(|locale| !locale.is_empty())
-                .map(str::to_owned),
-        );
+    preferred_locales_for(lc_all.as_deref(), lc_messages.as_deref(), lang.as_deref())
+}
+
+fn preferred_locales_for(
+    lc_all: Option<&str>,
+    lc_messages: Option<&str>,
+    lang: Option<&str>,
+) -> Vec<String> {
+    let Some(locale) = [lc_all, lc_messages, lang]
+        .into_iter()
+        .flatten()
+        .find(|locale| !locale.is_empty())
+    else {
+        return Vec::new();
+    };
+
+    locale_candidates(locale)
+}
+
+fn locale_candidates(locale: &str) -> Vec<String> {
+    let (without_modifier, modifier) = locale
+        .split_once('@')
+        .map_or((locale, None), |(locale, modifier)| {
+            (locale, Some(modifier))
+        });
+    let without_encoding = without_modifier
+        .split_once('.')
+        .map_or(without_modifier, |(locale, _)| locale);
+    let (language, country) = without_encoding
+        .split_once('_')
+        .map_or((without_encoding, None), |(language, country)| {
+            (language, Some(country))
+        });
+    let mut candidates = Vec::with_capacity(4);
+
+    if let (Some(country), Some(modifier)) = (country, modifier) {
+        candidates.push(format!("{language}_{country}@{modifier}"));
+    }
+    if let Some(country) = country {
+        candidates.push(format!("{language}_{country}"));
+    }
+    if let Some(modifier) = modifier {
+        candidates.push(format!("{language}@{modifier}"));
+    }
+    if !language.is_empty() {
+        candidates.push(language.to_owned());
     }
 
-    for variable in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-        if let Some(locale) = env::var_os(variable) {
-            let locale = locale.to_string_lossy();
-            if !locale.is_empty() {
-                locales.push(locale.into_owned());
-            }
-        }
-    }
-
-    let mut expanded = Vec::with_capacity(locales.len() * 3);
-    for locale in locales {
-        let without_encoding = locale.split('.').next().unwrap_or(&locale);
-        let without_modifier = without_encoding
-            .split('@')
-            .next()
-            .unwrap_or(without_encoding);
-
-        for candidate in [locale.as_str(), without_encoding, without_modifier] {
-            if !candidate.is_empty() && !expanded.iter().any(|item| item == candidate) {
-                expanded.push(candidate.to_owned());
-            }
-        }
-    }
-
-    expanded
+    candidates
 }
 
 fn localized_value(values: &[(&str, &str)], key: &str, locales: Vec<String>) -> Option<String> {
@@ -337,7 +396,16 @@ fn parse_exec(
     desktop_file: &Path,
     icon: Option<&str>,
 ) -> Result<Vec<String>, ()> {
-    let words = split_exec_words(command_line)?;
+    let command_line = unescape_exec_value(command_line);
+    let words = split_exec_words(&command_line)?;
+    if words
+        .iter()
+        .map(|word| count_file_field_codes(&word.value))
+        .sum::<usize>()
+        > 1
+    {
+        return Err(());
+    }
     let mut expanded = Vec::with_capacity(words.len());
 
     for word in words {
@@ -375,7 +443,7 @@ fn parse_exec(
             }
         }
 
-        if !value.is_empty() {
+        if !value.is_empty() || word.quoted {
             expanded.push(value);
         }
     }
@@ -383,8 +451,36 @@ fn parse_exec(
     Ok(expanded)
 }
 
+fn unescape_exec_value(value: &str) -> String {
+    let mut unescaped = String::with_capacity(value.len());
+    let mut characters = value.chars();
+
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            unescaped.push(character);
+            continue;
+        }
+
+        match characters.next() {
+            Some('s') => unescaped.push(' '),
+            Some('n') => unescaped.push('\n'),
+            Some('t') => unescaped.push('\t'),
+            Some('r') => unescaped.push('\r'),
+            Some('\\') => unescaped.push('\\'),
+            Some(other) => {
+                unescaped.push('\\');
+                unescaped.push(other);
+            }
+            None => unescaped.push('\\'),
+        }
+    }
+
+    unescaped
+}
+
 struct ExecWord {
     value: String,
+    quoted: bool,
     quoted_field_code: bool,
 }
 
@@ -394,6 +490,7 @@ fn split_exec_words(command_line: &str) -> Result<Vec<ExecWord>, ()> {
     let mut in_quotes = false;
     let mut escaped = false;
     let mut has_content = false;
+    let mut quoted = false;
     let mut quoted_field_code = false;
 
     for character in command_line.chars() {
@@ -413,15 +510,18 @@ fn split_exec_words(command_line: &str) -> Result<Vec<ExecWord>, ()> {
             }
             '"' => {
                 in_quotes = !in_quotes;
+                quoted = true;
                 has_content = true;
             }
             character if character.is_whitespace() && !in_quotes => {
                 if has_content {
                     words.push(ExecWord {
                         value: std::mem::take(&mut current),
+                        quoted,
                         quoted_field_code,
                     });
                     has_content = false;
+                    quoted = false;
                     quoted_field_code = false;
                 }
             }
@@ -439,6 +539,7 @@ fn split_exec_words(command_line: &str) -> Result<Vec<ExecWord>, ()> {
     if has_content {
         words.push(ExecWord {
             value: current,
+            quoted,
             quoted_field_code,
         });
     }
@@ -447,19 +548,63 @@ fn split_exec_words(command_line: &str) -> Result<Vec<ExecWord>, ()> {
 }
 
 fn contains_field_code(value: &str) -> bool {
-    value
-        .as_bytes()
-        .windows(2)
-        .any(|code| code[0] == b'%' && code[1].is_ascii_alphabetic())
+    let mut characters = value.chars();
+    while let Some(character) = characters.next() {
+        if character != '%' {
+            continue;
+        }
+
+        match characters.next() {
+            Some('%') => {}
+            Some(code) if code.is_ascii_alphabetic() => return true,
+            Some(_) | None => {}
+        }
+    }
+
+    false
+}
+
+fn count_file_field_codes(value: &str) -> usize {
+    let mut count = 0;
+    let mut characters = value.chars();
+    while let Some(character) = characters.next() {
+        if character != '%' {
+            continue;
+        }
+
+        match characters.next() {
+            Some('%') => {}
+            Some('f' | 'F' | 'u' | 'U') => count += 1,
+            Some(_) | None => {}
+        }
+    }
+
+    count
 }
 
 fn contains_standalone_only_field_code(value: &str) -> bool {
-    value.contains("%F") || value.contains("%U") || value.contains("%i")
+    let mut characters = value.chars();
+    while let Some(character) = characters.next() {
+        if character != '%' {
+            continue;
+        }
+
+        match characters.next() {
+            Some('%') => {}
+            Some('F' | 'U' | 'i') => return true,
+            Some(_) | None => {}
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_desktop_entry, parse_exec};
+    use super::{
+        is_visible_in_desktops, locale_candidates, parse_desktop_entry, parse_exec,
+        preferred_locales_for,
+    };
     use std::path::Path;
 
     #[test]
@@ -488,6 +633,21 @@ mod tests {
     }
 
     #[test]
+    fn uses_exec_as_fallback_for_dbus_activatable_entries() {
+        let contents =
+            "[Desktop Entry]\nType=Application\nName=Example\nExec=example\nDBusActivatable=true\n";
+        let entry = parse_desktop_entry(contents, Path::new("example.desktop"))
+            .expect("Exec remains a compatibility fallback");
+
+        assert_eq!(entry.exec, vec!["example"]);
+        assert!(parse_desktop_entry(
+            "[Desktop Entry]\nType=Application\nName=Example\nDBusActivatable=true\n",
+            Path::new("example.desktop"),
+        )
+        .is_none());
+    }
+
+    #[test]
     fn removes_file_placeholders_without_using_a_shell() {
         let command = parse_exec(
             "browser --new-window %U --name \"A quoted value\"",
@@ -501,6 +661,121 @@ mod tests {
             command,
             vec!["browser", "--new-window", "--name", "A quoted value"]
         );
+    }
+
+    #[test]
+    fn applies_general_exec_escapes_before_quoting() {
+        let command = parse_exec(
+            r#"app "a\sb" "a\\\\b""#,
+            "App",
+            Path::new("app.desktop"),
+            None,
+        )
+        .expect("valid exec line");
+
+        assert_eq!(command, vec!["app", "a b", r"a\b"]);
+    }
+
+    #[test]
+    fn preserves_empty_quoted_exec_arguments() {
+        let command = parse_exec(r#"app "" """#, "App", Path::new("app.desktop"), None)
+            .expect("valid exec line");
+
+        assert_eq!(command, vec!["app", "", ""]);
+    }
+
+    #[test]
+    fn treats_escaped_percent_sequences_as_literal_percentages() {
+        let command = parse_exec(
+            r#"app "100%%c" "%%f""#,
+            "App",
+            Path::new("app.desktop"),
+            None,
+        )
+        .expect("valid exec line");
+
+        assert_eq!(command, vec!["app", "100%c", "%f"]);
+    }
+
+    #[test]
+    fn rejects_multiple_file_field_codes() {
+        assert!(parse_exec("app %f %u", "App", Path::new("app.desktop"), None,).is_err());
+        assert!(parse_exec("app %F %U", "App", Path::new("app.desktop"), None,).is_err());
+    }
+
+    #[test]
+    fn resolves_desktop_visibility_in_current_desktop_order() {
+        assert!(!is_visible_in_desktops(
+            &["GNOME", "KDE"],
+            Some("KDE"),
+            Some("GNOME"),
+        ));
+        assert!(is_visible_in_desktops(
+            &["KDE", "GNOME"],
+            Some("KDE"),
+            Some("GNOME"),
+        ));
+    }
+
+    #[test]
+    fn generates_locale_fallbacks_for_country_and_modifier() {
+        assert_eq!(
+            locale_candidates("sr_YU.UTF-8@Latn"),
+            vec!["sr_YU@Latn", "sr_YU", "sr@Latn", "sr"]
+        );
+        assert_eq!(locale_candidates("sr_YU.UTF-8"), vec!["sr_YU", "sr"]);
+        assert_eq!(locale_candidates("sr.UTF-8@Latn"), vec!["sr@Latn", "sr"]);
+    }
+
+    #[test]
+    fn selects_effective_posix_locale_in_precedence_order() {
+        assert_eq!(
+            preferred_locales_for(Some("de_DE.UTF-8"), Some("fr_FR"), Some("en_US")),
+            vec!["de_DE", "de"]
+        );
+        assert_eq!(
+            preferred_locales_for(None, Some("fr_FR"), Some("en_US")),
+            vec!["fr_FR", "fr"]
+        );
+        assert_eq!(
+            preferred_locales_for(None, None, Some("en_US")),
+            vec!["en_US", "en"]
+        );
+        assert_eq!(
+            preferred_locales_for(Some(""), Some("fr_FR"), Some("en_US")),
+            vec!["fr_FR", "fr"]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collects_only_regular_desktop_files() {
+        use std::ffi::CString;
+        use std::fs;
+        use std::os::unix::ffi::OsStrExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let directory = std::env::temp_dir().join(format!(
+            "klauncher-desktop-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock after epoch")
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).expect("create test directory");
+        let regular = directory.join("regular.desktop");
+        let fifo = directory.join("special.desktop");
+        fs::write(&regular, "[Desktop Entry]\n").expect("create regular desktop file");
+        let fifo_path = CString::new(fifo.as_os_str().as_bytes()).expect("valid fifo path");
+        assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
+
+        let mut files = Vec::new();
+        super::collect_desktop_files(&directory, &mut files);
+        assert!(super::parse_desktop_file(&fifo).is_err());
+        fs::remove_dir_all(&directory).expect("remove test directory");
+
+        assert_eq!(files, vec![regular]);
     }
 
     #[test]
