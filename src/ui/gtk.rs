@@ -10,12 +10,14 @@ use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::core::{desktop::DesktopEntry, search};
+use crate::ui::selection::{Direction, SelectionState};
 
 const APPLICATION_ID: &str = "com.klaucher.Launcher";
 const LAYER_NAMESPACE: &str = "my-shell-launcher";
 const PANEL_WIDTH: i32 = 560;
 const PANEL_HEIGHT: i32 = 420;
 const ICON_SIZE: i32 = 32;
+const STYLE: &str = include_str!("style.css");
 
 pub fn run(applications: Rc<[DesktopEntry]>) -> Result<Option<usize>, Box<dyn Error>> {
     let selected = Rc::new(Cell::new(None));
@@ -132,10 +134,10 @@ fn build_launcher(
         list_item.set_child(Some(&row));
     });
 
-    let result_indices = Rc::new(RefCell::new(Vec::<usize>::new()));
+    let state = Rc::new(RefCell::new(SelectionState::new()));
     {
         let applications = Rc::clone(&applications);
-        let result_indices = Rc::clone(&result_indices);
+        let state = Rc::clone(&state);
         factory.connect_bind(move |_, list_item| {
             let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
                 return;
@@ -150,15 +152,18 @@ fn build_launcher(
             let Some(label) = row.last_child().and_downcast::<gtk::Label>() else {
                 return;
             };
-            let Some(application_index) = result_indices
-                .borrow()
-                .get(list_item.position() as usize)
-                .copied()
-            else {
+            let application_index = {
+                state
+                    .borrow()
+                    .application_index_at(list_item.position() as usize)
+            };
+            let Some(application_index) = application_index else {
                 return;
             };
 
-            let application = &applications[application_index];
+            let Some(application) = applications.get(application_index) else {
+                return;
+            };
             label.set_label(&application.name);
             set_application_icon(&image, application.icon.as_deref());
         });
@@ -198,32 +203,28 @@ fn build_launcher(
     };
 
     {
-        let result_indices = Rc::clone(&result_indices);
+        let state = Rc::clone(&state);
         let finish = Rc::clone(&finish);
         list_view.connect_activate(move |_, position| {
-            let application_index = result_indices.borrow().get(position as usize).copied();
+            let application_index = { state.borrow().activate_row(position as usize) };
             finish(application_index);
         });
     }
 
     {
-        let result_indices = Rc::clone(&result_indices);
+        let state = Rc::clone(&state);
         let finish = Rc::clone(&finish);
-        let selection = selection.clone();
         search_entry.connect_activate(move |_| {
-            let application_index = result_indices
-                .borrow()
-                .get(selection.selected() as usize)
-                .copied();
+            let application_index = { state.borrow().activate_selected() };
             finish(application_index);
         });
     }
 
     {
         let finish = Rc::clone(&finish);
+        let state = Rc::clone(&state);
         let selection = selection.clone();
         let list_view = list_view.clone();
-        let result_indices = Rc::clone(&result_indices);
         let key_controller = gtk::EventControllerKey::new();
         key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
         key_controller.connect_key_pressed(move |_, key, _, _| match key {
@@ -232,28 +233,22 @@ fn build_launcher(
                 gtk::glib::Propagation::Stop
             }
             gdk::Key::Up | gdk::Key::Down => {
-                let count = result_indices.borrow().len();
-                if count == 0 {
-                    return gtk::glib::Propagation::Stop;
-                }
-
-                let current = selection.selected() as usize;
-                let next = if current >= count {
-                    0
-                } else if key == gdk::Key::Up {
-                    current.checked_sub(1).unwrap_or(count - 1)
+                let direction = if key == gdk::Key::Up {
+                    Direction::Up
                 } else {
-                    (current + 1) % count
+                    Direction::Down
                 };
+                let next = { state.borrow_mut().navigate(direction) };
+                let Some(next) = next else {
+                    return gtk::glib::Propagation::Stop;
+                };
+
                 selection.set_selected(next as u32);
                 list_view.scroll_to(next as u32, gtk::ListScrollFlags::NONE, None);
                 gtk::glib::Propagation::Stop
             }
             gdk::Key::Return | gdk::Key::KP_Enter => {
-                let application_index = result_indices
-                    .borrow()
-                    .get(selection.selected() as usize)
-                    .copied();
+                let application_index = { state.borrow().activate_selected() };
                 finish(application_index);
                 gtk::glib::Propagation::Stop
             }
@@ -264,23 +259,27 @@ fn build_launcher(
 
     {
         let applications = Rc::clone(&applications);
-        let result_indices = Rc::clone(&result_indices);
+        let state = Rc::clone(&state);
         let model = model.clone();
         let selection = selection.clone();
         let placeholder = placeholder.clone();
         let update_results = Rc::new(move |query: &str| {
             let results = search::filter(&applications, query);
-            {
-                let mut indices = result_indices.borrow_mut();
-                indices.clear();
-                indices.extend(results.iter().map(|result| result.index));
-            }
+            let indices = results
+                .iter()
+                .map(|result| result.index)
+                .collect::<Vec<_>>();
+            let (result_count, selected_row) = {
+                let mut state = state.borrow_mut();
+                state.update_results(indices);
 
-            let empty_items = vec![""; results.len()];
+                (state.result_count(), state.selected_row())
+            };
+
+            let empty_items = vec![""; result_count];
             model.splice(0, model.n_items(), &empty_items);
-            let has_results = model.n_items() != 0;
-            placeholder.set_visible(!has_results);
-            selection.set_selected(if has_results { 0 } else { u32::MAX });
+            placeholder.set_visible(result_count == 0);
+            selection.set_selected(selected_row.map(|row| row as u32).unwrap_or(u32::MAX));
         });
 
         let update_results_for_signal = Rc::clone(&update_results);
@@ -338,49 +337,7 @@ fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
 
 fn install_css() {
     let provider = gtk::CssProvider::new();
-    provider.load_from_string(
-        r#"
-        .launcher-window {
-            background-color: transparent;
-        }
-
-        .launcher-surface {
-            background-color: transparent;
-        }
-
-        .launcher-panel {
-            background-color: alpha(@window_bg_color, 0.98);
-            border: 1px solid alpha(@borders, 0.75);
-            border-radius: 12px;
-            box-shadow: 0 8px 28px alpha(black, 0.35);
-        }
-
-        .launcher-search {
-            background-color: transparent;
-            border: none;
-            box-shadow: none;
-            font-size: 16px;
-        }
-
-        .launcher-list {
-            background-color: transparent;
-            padding: 8px;
-        }
-
-        .launcher-list row {
-            border-radius: 7px;
-        }
-
-        .launcher-list row:selected {
-            background-color: alpha(@accent_bg_color, 0.28);
-        }
-
-        .launcher-placeholder {
-            color: alpha(@window_fg_color, 0.6);
-            margin: 24px;
-        }
-        "#,
-    );
+    provider.load_from_string(STYLE);
 
     if let Some(display) = gdk::Display::default() {
         gtk::style_context_add_provider_for_display(

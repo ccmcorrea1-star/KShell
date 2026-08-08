@@ -1,4 +1,5 @@
 mod gtk;
+mod selection;
 
 use std::error::Error;
 use std::rc::Rc;

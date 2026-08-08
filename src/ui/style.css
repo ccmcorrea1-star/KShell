@@ -1,0 +1,39 @@
+.launcher-window {
+    background-color: transparent;
+}
+
+.launcher-surface {
+    background-color: transparent;
+}
+
+.launcher-panel {
+    background-color: alpha(@window_bg_color, 0.98);
+    border: 1px solid alpha(@borders, 0.75);
+    border-radius: 12px;
+    box-shadow: 0 8px 28px alpha(black, 0.35);
+}
+
+.launcher-search {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    font-size: 16px;
+}
+
+.launcher-list {
+    background-color: transparent;
+    padding: 8px;
+}
+
+.launcher-list row {
+    border-radius: 7px;
+}
+
+.launcher-list row:selected {
+    background-color: alpha(@accent_bg_color, 0.28);
+}
+
+.launcher-placeholder {
+    color: alpha(@window_fg_color, 0.6);
+    margin: 24px;
+}
