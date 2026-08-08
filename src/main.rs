@@ -9,10 +9,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(index) = ui::run(Rc::clone(&applications))? {
         let application = &applications[index];
-        let mut child = core::launch::launch(application)?;
-        if application.terminal {
-            child.wait()?;
-        }
+        let _child = core::launch::launch(application)?;
     }
 
     Ok(())

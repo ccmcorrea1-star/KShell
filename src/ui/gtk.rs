@@ -108,6 +108,10 @@ fn build_launcher(
 
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, list_item| {
+        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         row.set_margin_start(12);
         row.set_margin_end(12);
@@ -133,6 +137,10 @@ fn build_launcher(
         let applications = Rc::clone(&applications);
         let result_indices = Rc::clone(&result_indices);
         factory.connect_bind(move |_, list_item| {
+            let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
+                return;
+            };
+
             let Some(row) = list_item.child().and_downcast::<gtk::Box>() else {
                 return;
             };
@@ -214,6 +222,7 @@ fn build_launcher(
     {
         let finish = Rc::clone(&finish);
         let selection = selection.clone();
+        let list_view = list_view.clone();
         let result_indices = Rc::clone(&result_indices);
         let key_controller = gtk::EventControllerKey::new();
         key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -237,6 +246,7 @@ fn build_launcher(
                     (current + 1) % count
                 };
                 selection.set_selected(next as u32);
+                list_view.scroll_to(next as u32, gtk::ListScrollFlags::NONE, None);
                 gtk::glib::Propagation::Stop
             }
             gdk::Key::Return | gdk::Key::KP_Enter => {
@@ -283,14 +293,17 @@ fn build_launcher(
     {
         let window = window.clone();
         let panel = panel.clone();
+        let surface_for_click = surface.clone();
         let click = gtk::GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         click.connect_pressed(move |_, _, x, y| {
-            let allocation = panel.allocation();
-            let inside_panel = x >= f64::from(allocation.x())
-                && x < f64::from(allocation.x() + allocation.width())
-                && y >= f64::from(allocation.y())
-                && y < f64::from(allocation.y() + allocation.height());
+            let Some(bounds) = panel.compute_bounds(&surface_for_click) else {
+                return;
+            };
+            let inside_panel = x >= f64::from(bounds.x())
+                && x < f64::from(bounds.x() + bounds.width())
+                && y >= f64::from(bounds.y())
+                && y < f64::from(bounds.y() + bounds.height());
             if !inside_panel {
                 window.close();
             }
@@ -325,7 +338,7 @@ fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
 
 fn install_css() {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(
+    provider.load_from_string(
         r#"
         .launcher-window {
             background-color: transparent;
