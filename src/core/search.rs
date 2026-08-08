@@ -1,4 +1,4 @@
-use crate::desktop::DesktopEntry;
+use super::desktop::DesktopEntry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchResult {
@@ -110,13 +110,14 @@ fn fuzzy_score(query: &str, candidate: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::desktop::DesktopEntry;
     use super::{filter, fuzzy_score};
-    use crate::desktop::DesktopEntry;
 
     fn application(name: &str) -> DesktopEntry {
         DesktopEntry {
             name: name.to_owned(),
             generic_name: None,
+            icon: None,
             exec: vec![name.to_owned()],
             working_dir: None,
             terminal: false,

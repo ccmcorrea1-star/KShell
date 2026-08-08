@@ -1,34 +1,6 @@
-// Klauncher integration for niri.
-// Include this file at the end of ~/.config/niri/config.kdl so this bind
-// replaces any existing Mod+Space launcher binding.
-
-window-rule {
-    // The anchors keep this rule scoped to the dedicated Kitty app-id.
-    match app-id="^klauncher$"
-
-    // Floating windows are centered by niri by default.
-    open-floating true
-    default-column-width { fixed 650; }
-    default-window-height { fixed 450; }
-
-    // Kitty hides its own decorations for this invocation; these disable
-    // niri decorations for the launcher window only.
-    border {
-        off
-    }
-    focus-ring {
-        off
-    }
-
-    // Keep a subtle overlay-like separation from tiled windows.
-    shadow {
-        on
-    }
-}
-
 binds {
-    // niri spawn passes each argument separately; no shell is needed.
+    // gtk4-layer-shell creates the overlay surface directly.
     Mod+Space repeat=false {
-        spawn "kitty" "--class" "klauncher" "--override" "hide_window_decorations=yes" "klauncher"
+        spawn "klauncher"
     }
 }

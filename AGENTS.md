@@ -4,11 +4,12 @@
 
 Klauncher is a Rust 2021 binary crate for a minimal Wayland/Niri application launcher.
 
-- `src/main.rs` coordinates loading, the terminal session, and launching.
-- `src/desktop.rs` discovers and parses XDG `.desktop` application files.
-- `src/search.rs` implements fuzzy matching and ranking.
-- `src/ui.rs` owns the Crossterm/Ratatui interface and terminal lifecycle.
-- `src/launch.rs` starts selected applications in their own Unix session.
+- `src/main.rs` coordinates loading, the GTK session, and launching.
+- `src/core/desktop.rs` discovers and parses XDG `.desktop` application files.
+- `src/core/search.rs` implements fuzzy matching and ranking.
+- `src/core/launch.rs` starts selected applications in their own Unix session.
+- `src/ui/gtk.rs` owns the GTK4/gtk4-layer-shell launcher interface.
+- `src/ui/tui.rs` keeps the temporary Crossterm/Ratatui implementation during migration.
 - `contrib/niri/klauncher.kdl` contains the optional Niri keybinding/window configuration.
 - Tests are colocated in `#[cfg(test)]` modules; there is currently no separate `tests/` directory.
 

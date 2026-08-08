@@ -1,28 +1,15 @@
-mod desktop;
-mod launch;
-mod search;
+mod core;
 mod ui;
 
 use std::error::Error;
+use std::rc::Rc;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let applications = desktop::load_applications();
+    let applications: Rc<[core::desktop::DesktopEntry]> = core::desktop::load_applications().into();
 
-    let result = {
-        let _signals = ui::SignalGuard::install()?;
-        let mut session = ui::TerminalSession::enter()?;
-        let result = ui::run(session.terminal_mut(), &applications)?;
-        session.leave()?;
-        result
-    };
-
-    if ui::termination_requested() {
-        return Ok(());
-    }
-
-    if let Some(index) = result.selected {
+    if let Some(index) = ui::run(Rc::clone(&applications))? {
         let application = &applications[index];
-        let mut child = launch::launch(application)?;
+        let mut child = core::launch::launch(application)?;
         if application.terminal {
             child.wait()?;
         }

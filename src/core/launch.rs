@@ -4,7 +4,7 @@ use std::process::{Child, Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-use crate::desktop::DesktopEntry;
+use super::desktop::DesktopEntry;
 
 pub fn launch(application: &DesktopEntry) -> io::Result<Child> {
     let (program, arguments) = application
@@ -46,14 +46,15 @@ pub fn launch(application: &DesktopEntry) -> io::Result<Child> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::desktop::DesktopEntry;
     use super::launch;
-    use crate::desktop::DesktopEntry;
 
     #[test]
     fn rejects_an_empty_exec_field_before_spawning() {
         let application = DesktopEntry {
             name: "Invalid".to_owned(),
             generic_name: None,
+            icon: None,
             exec: Vec::new(),
             working_dir: None,
             terminal: false,
@@ -81,6 +82,7 @@ mod tests {
             let application = DesktopEntry {
                 name: "Session test".to_owned(),
                 generic_name: None,
+                icon: None,
                 exec: vec![
                     executable.to_string_lossy().into_owned(),
                     "--exact".to_owned(),

@@ -24,7 +24,7 @@ use ratatui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{desktop::DesktopEntry, search};
+use crate::core::{desktop::DesktopEntry, search};
 
 const ITEM_HEIGHT: u16 = 1;
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -491,12 +491,13 @@ mod tests {
     };
     #[cfg(unix)]
     use super::{termination_signal_handler, TERMINATION_REQUESTED};
-    use crate::desktop::DesktopEntry;
+    use crate::core::desktop::DesktopEntry;
 
     fn application(index: usize) -> DesktopEntry {
         DesktopEntry {
             name: format!("Application {index}"),
             generic_name: Some(format!("Description {index}")),
+            icon: None,
             exec: vec![format!("application-{index}")],
             working_dir: None,
             terminal: false,
@@ -518,7 +519,7 @@ mod tests {
     fn ctrl_c_remains_a_normal_cancel_action() {
         let applications = vec![application(0)];
         let mut query = String::new();
-        let mut results = crate::search::filter(&applications, &query);
+        let mut results = crate::core::search::filter(&applications, &query);
         let mut selected = 0;
 
         let result = handle_key_event(
@@ -541,7 +542,7 @@ mod tests {
         code: KeyCode,
         applications: &[DesktopEntry],
         query: &mut String,
-        results: &mut Vec<crate::search::SearchResult>,
+        results: &mut Vec<crate::core::search::SearchResult>,
         selected: &mut usize,
     ) {
         assert!(handle_key_event(
@@ -570,8 +571,8 @@ mod tests {
         let applications = (0..3).map(application).collect::<Vec<_>>();
         let mut press_query = String::new();
         let mut repeat_query = String::new();
-        let mut press_results = crate::search::filter(&applications, &press_query);
-        let mut repeat_results = crate::search::filter(&applications, &repeat_query);
+        let mut press_results = crate::core::search::filter(&applications, &press_query);
+        let mut repeat_results = crate::core::search::filter(&applications, &repeat_query);
         let mut press_selected = 0;
         let mut repeat_selected = 0;
 
@@ -657,7 +658,7 @@ mod tests {
     #[test]
     fn names_render_without_image_dependencies() {
         let applications = vec![application(0), application(1)];
-        let results = crate::search::filter(&applications, "");
+        let results = crate::core::search::filter(&applications, "");
         let mut terminal = Terminal::new(TestBackend::new(48, 8)).unwrap();
 
         terminal
@@ -678,7 +679,7 @@ mod tests {
     #[test]
     fn scrollbar_is_rendered_only_when_results_overflow() {
         let applications = (0..10).map(application).collect::<Vec<_>>();
-        let results = crate::search::filter(&applications, "");
+        let results = crate::core::search::filter(&applications, "");
         let mut terminal = Terminal::new(TestBackend::new(48, 8)).unwrap();
 
         terminal
@@ -719,7 +720,7 @@ mod tests {
             ("application 2", 0, 64, 21),
             ("", 23, 40, 6),
         ] {
-            let results = crate::search::filter(&applications, query);
+            let results = crate::core::search::filter(&applications, query);
             let selected = next_selected.min(results.len().saturating_sub(1));
             terminal.backend_mut().resize(width, height);
             terminal
