@@ -1,0 +1,12 @@
+[package]
+name = "kbar"
+version.workspace = true
+edition.workspace = true
+description = "The future KShell desktop bar"
+license.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+gtk4-layer-shell.workspace = true
+kshell-niri.workspace = true
+kshell-theme.workspace = true

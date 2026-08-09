@@ -11,14 +11,12 @@ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::core::{desktop::DesktopEntry, search};
 use crate::ui::selection::{Direction, SelectionState};
+use kshell_theme::tokens;
 
 const APPLICATION_ID: &str = "com.klaucher.Launcher";
-const LAYER_NAMESPACE: &str = "my-shell-launcher";
-const PANEL_WIDTH: i32 = 520;
-const PANEL_HEIGHT: i32 = 300;
-const PANEL_MARGIN: i32 = 16;
-const ICON_SIZE: i32 = 18;
-const ROW_HEIGHT: i32 = 38;
+const LAYER_NAMESPACE: &str = kshell_niri::LAUNCHER_NAMESPACE;
+const MAX_EMPTY_QUERY_CHARS: usize = 32;
+const MAX_EMPTY_MESSAGE_WIDTH_CHARS: i32 = 60;
 const STYLE: &str = include_str!("style.css");
 
 pub fn run(applications: Rc<[DesktopEntry]>) -> Result<Option<usize>, Box<dyn Error>> {
@@ -70,6 +68,25 @@ fn build_launcher(
 ) {
     install_css();
 
+    let backdrop = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    backdrop.add_css_class("launcher-backdrop");
+    backdrop.set_hexpand(true);
+    backdrop.set_vexpand(true);
+    backdrop.set_can_target(false);
+
+    let backdrop_revealer = gtk::Revealer::new();
+    backdrop_revealer.set_child(Some(&backdrop));
+    backdrop_revealer.set_reveal_child(false);
+    backdrop_revealer.set_transition_type(gtk::RevealerTransitionType::Crossfade);
+    let animation_duration = match gtk::Settings::default() {
+        Some(settings) if settings.is_gtk_enable_animations() => tokens::BACKDROP_ANIMATION_MS,
+        _ => 0,
+    };
+    backdrop_revealer.set_transition_duration(animation_duration);
+    backdrop_revealer.set_hexpand(true);
+    backdrop_revealer.set_vexpand(true);
+    backdrop_revealer.set_can_target(false);
+
     let window = gtk::ApplicationWindow::new(application);
     window.add_css_class("launcher-window");
     window.set_decorated(false);
@@ -87,15 +104,22 @@ fn build_launcher(
     surface.set_hexpand(true);
     surface.set_vexpand(true);
 
+    let root = gtk::Overlay::new();
+    root.add_css_class("launcher-surface");
+    root.set_hexpand(true);
+    root.set_vexpand(true);
+    root.set_child(Some(&backdrop_revealer));
+    root.add_overlay(&surface);
+
     let (panel_width, panel_height) = panel_size();
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 0);
     panel.add_css_class("launcher-panel");
     panel.set_width_request(panel_width);
     panel.set_height_request(panel_height);
-    panel.set_margin_start(PANEL_MARGIN);
-    panel.set_margin_end(PANEL_MARGIN);
-    panel.set_margin_top(PANEL_MARGIN);
-    panel.set_margin_bottom(PANEL_MARGIN);
+    panel.set_margin_start(tokens::PANEL_MARGIN);
+    panel.set_margin_end(tokens::PANEL_MARGIN);
+    panel.set_margin_top(tokens::PANEL_MARGIN);
+    panel.set_margin_bottom(tokens::PANEL_MARGIN);
     panel.set_halign(gtk::Align::Center);
     panel.set_valign(gtk::Align::Center);
     surface.set_center_widget(Some(&panel));
@@ -106,15 +130,15 @@ fn build_launcher(
 
     let prompt = gtk::Label::new(Some(">"));
     prompt.add_css_class("launcher-prompt");
-    prompt.set_margin_start(14);
-    prompt.set_margin_end(10);
+    prompt.set_margin_start(tokens::PANEL_INSET);
+    prompt.set_margin_end(tokens::ICON_NAME_GAP);
     prompt.set_valign(gtk::Align::Center);
     search_header.append(&prompt);
 
     let search_entry = gtk::Entry::new();
     search_entry.set_placeholder_text(Some("search applications..."));
     search_entry.set_hexpand(true);
-    search_entry.set_margin_end(14);
+    search_entry.set_margin_end(tokens::PANEL_INSET);
     search_entry.set_valign(gtk::Align::Center);
     search_entry.add_css_class("launcher-search");
     search_header.append(&search_entry);
@@ -131,14 +155,14 @@ fn build_launcher(
             return;
         };
 
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        row.set_margin_start(8);
-        row.set_margin_end(10);
-        row.set_height_request(ROW_HEIGHT);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, tokens::ICON_NAME_GAP);
+        row.set_margin_start(tokens::SPACE_2);
+        row.set_margin_end(tokens::ICON_NAME_GAP);
+        row.set_height_request(tokens::ROW_HEIGHT);
 
         let image = gtk::Image::new();
-        image.set_pixel_size(ICON_SIZE);
-        image.set_width_request(ICON_SIZE);
+        image.set_pixel_size(tokens::ICON_SIZE);
+        image.set_width_request(tokens::ICON_SIZE);
         row.append(&image);
 
         let label = gtk::Label::new(None);
@@ -201,6 +225,7 @@ fn build_launcher(
     placeholder.set_halign(gtk::Align::Center);
     placeholder.set_valign(gtk::Align::Center);
     placeholder.set_hexpand(true);
+    placeholder.set_max_width_chars(MAX_EMPTY_MESSAGE_WIDTH_CHARS);
     placeholder.set_wrap(true);
     placeholder.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     placeholder.set_justify(gtk::Justification::Center);
@@ -211,7 +236,7 @@ fn build_launcher(
     content.add_overlay(&placeholder);
     panel.append(&content);
 
-    window.set_child(Some(&surface));
+    window.set_child(Some(&root));
 
     let finish = {
         let application = application.clone();
@@ -302,11 +327,7 @@ fn build_launcher(
 
             let empty_items = vec![""; result_count];
             model.splice(0, model.n_items(), &empty_items);
-            let empty_message = if query.is_empty() {
-                "No applications available".to_owned()
-            } else {
-                format!("No applications found for \"{query}\"")
-            };
+            let empty_message = empty_message(query);
             placeholder.set_label(&empty_message);
             placeholder.set_visible(result_count == 0);
             selection.set_selected(selected_row.map(|row| row as u32).unwrap_or(u32::MAX));
@@ -349,7 +370,30 @@ fn build_launcher(
     }
 
     window.present();
+    let backdrop_revealer_for_animation = backdrop_revealer.clone();
+    gtk::glib::idle_add_local_once(move || {
+        backdrop_revealer_for_animation.set_reveal_child(true);
+    });
     search_entry.grab_focus();
+}
+
+fn empty_message(query: &str) -> String {
+    if query.is_empty() {
+        return "No applications available".to_owned();
+    }
+
+    let mut characters = query.chars();
+    let displayed_query = characters
+        .by_ref()
+        .take(MAX_EMPTY_QUERY_CHARS.saturating_sub(1))
+        .collect::<String>();
+    let displayed_query = if characters.next().is_some() {
+        format!("{displayed_query}…")
+    } else {
+        displayed_query
+    };
+
+    format!("No applications found for \"{displayed_query}\"")
 }
 
 fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
@@ -367,16 +411,16 @@ fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
 
 fn panel_size() -> (i32, i32) {
     let Some(display) = gdk::Display::default() else {
-        return (PANEL_WIDTH, PANEL_HEIGHT);
+        return (tokens::PANEL_WIDTH, tokens::PANEL_HEIGHT);
     };
     let Some(monitor) = display.monitors().item(0).and_downcast::<gdk::Monitor>() else {
-        return (PANEL_WIDTH, PANEL_HEIGHT);
+        return (tokens::PANEL_WIDTH, tokens::PANEL_HEIGHT);
     };
 
     let geometry = monitor.geometry();
     (
-        PANEL_WIDTH.min((geometry.width() - PANEL_MARGIN * 2).max(1)),
-        PANEL_HEIGHT.min((geometry.height() - PANEL_MARGIN * 2).max(1)),
+        tokens::PANEL_WIDTH.min((geometry.width() - tokens::PANEL_MARGIN * 2).max(1)),
+        tokens::PANEL_HEIGHT.min((geometry.height() - tokens::PANEL_MARGIN * 2).max(1)),
     )
 }
 
@@ -389,6 +433,38 @@ fn install_css() {
             &display,
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{empty_message, MAX_EMPTY_QUERY_CHARS};
+
+    #[test]
+    fn empty_message_uses_available_copy_without_a_query() {
+        assert_eq!(empty_message(""), "No applications available");
+    }
+
+    #[test]
+    fn empty_message_preserves_a_short_query() {
+        assert_eq!(
+            empty_message("calculator"),
+            "No applications found for \"calculator\""
+        );
+    }
+
+    #[test]
+    fn empty_message_limits_long_queries_without_splitting_characters() {
+        let query = "ação".repeat(MAX_EMPTY_QUERY_CHARS);
+        let displayed_query = query
+            .chars()
+            .take(MAX_EMPTY_QUERY_CHARS - 1)
+            .collect::<String>();
+
+        assert_eq!(
+            empty_message(&query),
+            format!("No applications found for \"{displayed_query}…\"")
         );
     }
 }

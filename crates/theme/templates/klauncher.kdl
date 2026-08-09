@@ -2,17 +2,17 @@
 // Quiet Gruvbox workspace treatment. This fragment only adds visual defaults;
 // existing outputs, rules, and binds remain owned by the main configuration.
 layout {
-    gaps 8
-    background-color "#1d2021"
+    gaps {{GAP_MAIN}}
+    background-color "{{BG_CANVAS}}"
 
     focus-ring {
         off
     }
 
     border {
-        width 2
-        active-color "#665c54"
-        inactive-color "#282828"
+        width {{BORDER_WIDTH}}
+        active-color "{{BORDER_STRUCTURAL}}"
+        inactive-color "{{BG_SURFACE}}"
     }
 
     shadow {
@@ -22,18 +22,18 @@ layout {
 
 // Keep compositor-drawn corners nearly square and remove client shadows.
 window-rule {
-    geometry-corner-radius 2
+    geometry-corner-radius {{RADIUS_PANEL}}
     clip-to-geometry true
 }
 
 // Niri 26.04+ compositor blur for the launcher backdrop.
 blur {
-    passes 2
-    offset 2
+    passes {{BACKDROP_BLUR_PASSES}}
+    offset {{BACKDROP_BLUR_OFFSET}}
 }
 
 layer-rule {
-    match namespace="^my-shell-launcher$"
+    match namespace="^{{LAUNCHER_NAMESPACE}}$"
 
     background-effect {
         blur true
@@ -45,7 +45,7 @@ layer-rule {
 
 binds {
     // gtk4-layer-shell creates the overlay surface directly.
-    Mod+Space repeat=false {
-        spawn "klauncher"
+    {{LAUNCHER_BINDING}} repeat=false {
+        spawn "{{LAUNCHER_COMMAND}}"
     }
 }

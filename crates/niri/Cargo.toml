@@ -1,0 +1,6 @@
+[package]
+name = "kshell-niri"
+version.workspace = true
+edition.workspace = true
+description = "Reusable Niri integration values for KShell components"
+license.workspace = true

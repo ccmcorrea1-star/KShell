@@ -442,6 +442,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kbar"
+version = "0.1.0"
+dependencies = [
+ "gtk4",
+ "gtk4-layer-shell",
+ "kshell-niri",
+ "kshell-theme",
+]
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -453,7 +463,27 @@ version = "0.1.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
+ "kshell-niri",
+ "kshell-theme",
  "libc",
+]
+
+[[package]]
+name = "kshell-niri"
+version = "0.1.0"
+
+[[package]]
+name = "kshell-theme"
+version = "0.1.0"
+dependencies = [
+ "kshell-niri",
+]
+
+[[package]]
+name = "kshell-theme-gen"
+version = "0.1.0"
+dependencies = [
+ "kshell-theme",
 ]
 
 [[package]]

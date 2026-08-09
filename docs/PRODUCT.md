@@ -36,7 +36,7 @@ O contexto prioritário é uma sessão Wayland usando Niri. A integração docum
 - Aplicações que exigem um terminal usam `$TERMINAL` e, quando a variável não está definida, recorrem a `kitty`.
 - A implementação nativa usa Rust 2021, GTK4 e `gtk4-layer-shell`.
 - A implementação nativa exige um compositor Wayland com suporte a layer-shell.
-- A terminologia do produto está definida em `CONTEXT.md`: Desktop Entry, Application, Application Selection e Launcher Query.
+- A terminologia do produto está definida em `docs/CONTEXT.md`: Desktop Entry, Application, Application Selection e Launcher Query.
 - A escolha definitiva do terminal permanece em aberto.
 - A decisão sobre ampliar o launcher para uma command palette permanece em aberto.
 
@@ -51,9 +51,9 @@ O contexto prioritário é uma sessão Wayland usando Niri. A integração docum
 ## Evidence on Hand
 
 - `README.md` documenta o comportamento atual do produto e seus requisitos operacionais.
-- `CONTEXT.md` define a terminologia aprovada da interface.
-- `src/ui/gtk.rs` contém as dimensões atuais da sobreposição e a ligação dos controles.
-- `src/ui/style.css` contém o estilo GTK atual.
+- `docs/CONTEXT.md` define a terminologia aprovada da interface.
+- `apps/klauncher/src/ui/gtk.rs` contém as dimensões atuais da sobreposição e a ligação dos controles.
+- `apps/klauncher/src/ui/style.css` contém o estilo GTK atual.
 - `mockups/launcher-designs.html` é o mockup HTML estático usado para iteração visual.
 - Não há ativos de marca, alegações de clientes, depoimentos ou imagens de produto fornecidos para serem fabricados ou sugeridos.
 

@@ -1,0 +1,9 @@
+[package]
+name = "kshell-theme-gen"
+version.workspace = true
+edition.workspace = true
+description = "Generate KShell theme artifacts from the shared design system"
+license.workspace = true
+
+[dependencies]
+kshell-theme.workspace = true
