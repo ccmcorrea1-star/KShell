@@ -1,6 +1,0 @@
-{
-  "files": ["mockups/launcher-designs.html"],
-  "insertBefore": "</body>",
-  "commentSyntax": "html",
-  "cspChecked": true
-}

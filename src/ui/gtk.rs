@@ -14,11 +14,11 @@ use crate::ui::selection::{Direction, SelectionState};
 
 const APPLICATION_ID: &str = "com.klaucher.Launcher";
 const LAYER_NAMESPACE: &str = "my-shell-launcher";
-const PANEL_WIDTH: i32 = 600;
-const PANEL_HEIGHT: i32 = 380;
-const PANEL_MARGIN: i32 = 24;
-const ICON_SIZE: i32 = 36;
-const ROW_HEIGHT: i32 = 36;
+const PANEL_WIDTH: i32 = 520;
+const PANEL_HEIGHT: i32 = 300;
+const PANEL_MARGIN: i32 = 16;
+const ICON_SIZE: i32 = 18;
+const ROW_HEIGHT: i32 = 38;
 const STYLE: &str = include_str!("style.css");
 
 pub fn run(applications: Rc<[DesktopEntry]>) -> Result<Option<usize>, Box<dyn Error>> {
@@ -106,28 +106,18 @@ fn build_launcher(
 
     let prompt = gtk::Label::new(Some(">"));
     prompt.add_css_class("launcher-prompt");
-    prompt.set_margin_start(20);
-    prompt.set_margin_end(12);
+    prompt.set_margin_start(14);
+    prompt.set_margin_end(10);
     prompt.set_valign(gtk::Align::Center);
     search_header.append(&prompt);
 
     let search_entry = gtk::Entry::new();
     search_entry.set_placeholder_text(Some("search applications..."));
     search_entry.set_hexpand(true);
-    search_entry.set_margin_start(0);
-    search_entry.set_margin_end(12);
-    search_entry.set_margin_top(9);
-    search_entry.set_margin_bottom(9);
+    search_entry.set_margin_end(14);
+    search_entry.set_valign(gtk::Align::Center);
     search_entry.add_css_class("launcher-search");
     search_header.append(&search_entry);
-
-    let result_count = gtk::Label::new(Some("00 / 00"));
-    result_count.add_css_class("launcher-count");
-    result_count.set_margin_start(12);
-    result_count.set_margin_end(20);
-    result_count.set_valign(gtk::Align::Center);
-    result_count.set_xalign(1.0);
-    search_header.append(&result_count);
 
     panel.append(&search_header);
 
@@ -141,11 +131,9 @@ fn build_launcher(
             return;
         };
 
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-        row.set_margin_start(16);
-        row.set_margin_end(16);
-        row.set_margin_top(8);
-        row.set_margin_bottom(8);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.set_margin_start(8);
+        row.set_margin_end(10);
         row.set_height_request(ROW_HEIGHT);
 
         let image = gtk::Image::new();
@@ -153,35 +141,13 @@ fn build_launcher(
         image.set_width_request(ICON_SIZE);
         row.append(&image);
 
-        let text = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        text.add_css_class("launcher-row-text");
-        text.set_hexpand(true);
-        text.set_valign(gtk::Align::Center);
-
         let label = gtk::Label::new(None);
         label.add_css_class("launcher-row-title");
         label.set_halign(gtk::Align::Start);
         label.set_hexpand(true);
+        label.set_valign(gtk::Align::Center);
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        text.append(&label);
-
-        let generic_name = gtk::Label::new(None);
-        generic_name.add_css_class("launcher-row-subtitle");
-        generic_name.set_halign(gtk::Align::Start);
-        generic_name.set_hexpand(true);
-        generic_name.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        generic_name.set_visible(false);
-        text.append(&generic_name);
-
-        row.append(&text);
-
-        let arrow = gtk::Label::new(Some("→"));
-        arrow.add_css_class("launcher-row-arrow");
-        arrow.set_halign(gtk::Align::End);
-        arrow.set_valign(gtk::Align::Center);
-        arrow.set_width_request(20);
-        arrow.set_xalign(1.0);
-        row.append(&arrow);
+        row.append(&label);
 
         list_item.set_child(Some(&row));
     });
@@ -201,13 +167,7 @@ fn build_launcher(
             let Some(image) = row.first_child().and_downcast::<gtk::Image>() else {
                 return;
             };
-            let Some(text) = image.next_sibling().and_downcast::<gtk::Box>() else {
-                return;
-            };
-            let Some(label) = text.first_child().and_downcast::<gtk::Label>() else {
-                return;
-            };
-            let Some(generic_name) = text.last_child().and_downcast::<gtk::Label>() else {
+            let Some(label) = image.next_sibling().and_downcast::<gtk::Label>() else {
                 return;
             };
             let application_index = {
@@ -223,12 +183,6 @@ fn build_launcher(
                 return;
             };
             label.set_label(&application.name);
-            let generic_label = application
-                .generic_name
-                .as_deref()
-                .filter(|name| !name.is_empty() && *name != application.name);
-            generic_name.set_label(generic_label.unwrap_or_default());
-            generic_name.set_visible(generic_label.is_some());
             set_application_icon(&image, application.icon.as_deref());
         });
     }
@@ -256,34 +210,6 @@ fn build_launcher(
     content.set_child(Some(&scrolled));
     content.add_overlay(&placeholder);
     panel.append(&content);
-
-    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-    footer.add_css_class("launcher-footer");
-    footer.set_hexpand(true);
-    let hints: [(&[&str], &str); 3] = [
-        (&["↑", "↓"], "move"),
-        (&["enter"], "open"),
-        (&["esc"], "exit"),
-    ];
-    for (keys, label_text) in hints {
-        let group = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        group.add_css_class("launcher-footer-group");
-        group.set_valign(gtk::Align::Center);
-
-        for key_text in keys {
-            let key = gtk::Label::new(Some(key_text));
-            key.add_css_class("launcher-footer-key");
-            key.set_valign(gtk::Align::Center);
-            group.append(&key);
-        }
-
-        let label = gtk::Label::new(Some(label_text));
-        label.add_css_class("launcher-footer-label");
-        label.set_valign(gtk::Align::Center);
-        group.append(&label);
-        footer.append(&group);
-    }
-    panel.append(&footer);
 
     window.set_child(Some(&surface));
 
@@ -360,8 +286,6 @@ fn build_launcher(
         let model = model.clone();
         let selection = selection.clone();
         let placeholder = placeholder.clone();
-        let result_count_label = result_count.clone();
-        let total_count = applications.len();
         let update_results = Rc::new(move |query: &str| {
             let query = query.trim();
             let results = search::filter(&applications, query);
@@ -378,7 +302,6 @@ fn build_launcher(
 
             let empty_items = vec![""; result_count];
             model.splice(0, model.n_items(), &empty_items);
-            result_count_label.set_label(&format!("{result_count:02} / {total_count:02}"));
             let empty_message = if query.is_empty() {
                 "No applications available".to_owned()
             } else {

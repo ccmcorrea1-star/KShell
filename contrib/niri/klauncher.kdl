@@ -1,3 +1,30 @@
+// Quiet Gruvbox workspace treatment. This fragment only adds visual defaults;
+// existing outputs, rules, and binds remain owned by the main configuration.
+layout {
+    gaps 8
+    background-color "#1d2021"
+
+    focus-ring {
+        off
+    }
+
+    border {
+        width 2
+        active-color "#665c54"
+        inactive-color "#282828"
+    }
+
+    shadow {
+        off
+    }
+}
+
+// Keep compositor-drawn corners nearly square and remove client shadows.
+window-rule {
+    geometry-corner-radius 2
+    clip-to-geometry true
+}
+
 binds {
     // gtk4-layer-shell creates the overlay surface directly.
     Mod+Space repeat=false {

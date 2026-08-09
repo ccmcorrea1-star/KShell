@@ -3,6 +3,14 @@
 Lightweight application launcher for Wayland and Niri, built with Rust, GTK4,
 and `gtk4-layer-shell`.
 
+## Appearance
+
+Klauncher uses a compact `520 × 300px` Gruvbox panel with a `48px` search
+header and a scrolling application list. Each result contains only its desktop
+icon and Application name; long names truncate with an ellipsis. The selected
+row uses a muted left indicator, keeping the query and selection easy to read
+without auxiliary metadata or decorative controls.
+
 ## Features
 
 - Overlay interface centered on the screen.
@@ -86,6 +94,11 @@ Include the provided configuration file in your main Niri configuration:
 ```kdl
 include "/path/to/klauncher/contrib/niri/klauncher.kdl"
 ```
+
+When using the fragment's Gruvbox layout values as an override, put this
+include after any existing visual `layout` or `window-rule` configuration that
+it is intended to replace. Keep it alongside, rather than inside, your own
+`binds` block.
 
 The file configures `Mod+Space` to open the launcher. If the binary is in
 `~/.local/bin`, Niri must be able to find it through `PATH`.

@@ -8,6 +8,8 @@ web
 
 Este registro descreve a superfície de mockup HTML estático do Klauncher. O produto representado pelo mockup é um aplicativo nativo para Linux.
 
+O mockup em `mockups/launcher-designs.html` é a referência visual canônica do launcher nativo: ambos usam o mesmo painel compacto Gruvbox de `520 × 300px`.
+
 ## Users
 
 A pessoa principal é alguém que trabalha em Linux, em uma sessão Wayland com prioridade para o Niri, e quer abrir uma aplicação sem sair do espaço de trabalho atual.
@@ -42,7 +44,9 @@ O contexto prioritário é uma sessão Wayland usando Niri. A integração docum
 
 - O nome do produto é Klauncher.
 - A interação é concisa, orientada pelo teclado e adequada a uma sobreposição sempre disponível.
-- Não há outros compromissos de marca confirmados além do nome e desse modelo de interação.
+- A aparência é Gruvbox, escura e plana: `#1d2021` no cabeçalho, `#282828` no painel, `#3c3836` na seleção e `#ebdbb2` no texto.
+- Cada Application mostra somente ícone e nome; o indicador esquerdo discreto comunica a seleção.
+- A interface não usa cores vibrantes, HUD, glow, gradientes, sombras ou controles decorativos.
 
 ## Evidence on Hand
 

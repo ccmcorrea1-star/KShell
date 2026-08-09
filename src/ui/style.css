@@ -1,12 +1,10 @@
-@define-color launcher-background #050505;
-@define-color launcher-foreground #F0F0EA;
-@define-color launcher-secondary #949993;
-@define-color launcher-muted #777A75;
-@define-color launcher-divider rgba(240, 240, 234, 0.48);
-@define-color launcher-row-divider rgba(240, 240, 234, 0.12);
-@define-color launcher-hover rgba(240, 240, 234, 0.06);
-@define-color launcher-selection rgba(255, 255, 255, 0.10);
-@define-color launcher-key-border rgba(240, 240, 234, 0.25);
+@define-color launcher-background #1d2021;
+@define-color launcher-surface #282828;
+@define-color launcher-hover #32302f;
+@define-color launcher-foreground #ebdbb2;
+@define-color launcher-secondary #a89984;
+@define-color launcher-selection #3c3836;
+@define-color launcher-border #665c54;
 
 * {
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
@@ -27,10 +25,10 @@
 }
 
 .launcher-panel {
-    background-color: @launcher-background;
+    background-color: @launcher-surface;
     background-image: none;
-    border: 2px solid @launcher-foreground;
-    border-radius: 0;
+    border: 2px solid @launcher-border;
+    border-radius: 2px;
     box-shadow: none;
     color: @launcher-foreground;
 }
@@ -46,7 +44,7 @@
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
     font-size: 14px;
     font-weight: 400;
-    min-height: 46px;
+    min-height: 36px;
     outline-style: none;
     padding: 0;
 }
@@ -65,7 +63,7 @@
 }
 
 .launcher-search placeholder {
-    color: @launcher-muted;
+    color: @launcher-secondary;
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
     font-size: 14px;
     font-weight: 400;
@@ -81,24 +79,17 @@
     background-color: @launcher-background;
     background-image: none;
     border: 0;
-    border-bottom: 1px solid @launcher-divider;
-    border-radius: 0;
+    border-bottom: 1px solid @launcher-border;
+    border-radius: 2px 2px 0 0;
     box-shadow: none;
-    min-height: 64px;
+    min-height: 48px;
     padding: 0;
 }
 
 .launcher-prompt {
-    color: @launcher-muted;
+    color: @launcher-secondary;
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
     font-size: 14px;
-    font-weight: 400;
-}
-
-.launcher-count {
-    color: @launcher-muted;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 10px;
     font-weight: 400;
 }
 
@@ -112,18 +103,19 @@
 }
 
 .launcher-list {
-    padding: 9px 12px;
+    padding: 7px;
 }
 
 .launcher-list row {
     background-color: transparent;
     background-image: none;
     border: 0;
-    border-bottom: 1px solid @launcher-row-divider;
-    border-radius: 0;
+    border-bottom: 0;
+    border-left: 2px solid transparent;
+    border-radius: 1px;
     box-shadow: none;
-    color: @launcher-secondary;
-    min-height: 52px;
+    color: @launcher-foreground;
+    min-height: 38px;
 }
 
 .launcher-list row:hover,
@@ -135,114 +127,38 @@
 .launcher-list row:selected {
     background-color: @launcher-selection;
     background-image: none;
+    border-left: 2px solid @launcher-border;
     color: @launcher-foreground;
 }
 
 .launcher-list row image {
     background-color: transparent;
     background-image: none;
-    border: 1px solid @launcher-secondary;
     border-radius: 1px;
     box-shadow: none;
     color: @launcher-secondary;
     padding: 0;
 }
 
-.launcher-list row:selected image {
-    border-color: @launcher-foreground;
-    color: @launcher-foreground;
-}
-
-.launcher-row-text {
-    color: @launcher-foreground;
-}
-
 .launcher-row-title {
     color: @launcher-foreground;
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 14px;
-    font-weight: 400;
-}
-
-.launcher-row-subtitle {
-    color: @launcher-muted;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 10px;
-    font-weight: 400;
-}
-
-/* The arrow is supplied as a child widget; its visibility follows selection. */
-.launcher-row-arrow,
-.launcher-arrow {
-    background-color: transparent;
-    color: transparent;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 14px;
-    font-weight: 400;
-    min-height: 14px;
-    min-width: 14px;
-    opacity: 0;
-}
-
-.launcher-list row:selected .launcher-row-arrow,
-.launcher-list row:selected .launcher-arrow {
-    color: @launcher-foreground;
-    opacity: 1;
-}
-
-.launcher-footer {
-    background-color: transparent;
-    background-image: none;
-    border: 0;
-    border-top: 1px solid rgba(240, 240, 234, 0.14);
-    border-radius: 0;
-    box-shadow: none;
-    color: @launcher-muted;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 10px;
-    font-weight: 400;
-    min-height: 46px;
-    padding: 0 20px;
-}
-
-.launcher-footer-group {
-    background-color: transparent;
-}
-
-.launcher-footer-key,
-.launcher-footer kbd,
-.launcher-key {
-    background-color: transparent;
-    border: 1px solid @launcher-key-border;
-    border-radius: 0;
-    color: @launcher-foreground;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 10px;
-    font-weight: 400;
-    min-width: 24px;
-    padding: 3px 6px;
-}
-
-.launcher-footer-label,
-.launcher-key-label {
-    color: @launcher-muted;
-    font-family: "JetBrainsMono Nerd Font Mono", monospace;
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 400;
 }
 
 .launcher-placeholder,
 .launcher-empty-state {
     background-color: transparent;
-    color: @launcher-muted;
+    color: @launcher-secondary;
     font-family: "JetBrainsMono Nerd Font Mono", monospace;
     font-size: 14px;
     font-weight: 400;
-    margin: 32px 20px;
+    margin: 24px 16px;
     padding: 0;
 }
 
 .launcher-placeholder:backdrop,
 .launcher-empty-state:backdrop {
-    color: @launcher-muted;
+    color: @launcher-secondary;
 }
