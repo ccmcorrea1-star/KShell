@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Klauncher</title>
+    <style>
+        :root {
+            --paper: #0c0f0e;
+            --ink: #f0f0ea;
+            --stage: #151918;
+            --black: #050505;
+            --white: #f0f0ea;
+            --gray: #949993;
+            --muted: #777a75;
+            --focus: #5660ff;
+            --panel-width: 600px;
+            --panel-height: 380px;
+            --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --mono: "JetBrainsMono Nerd Font Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        }
+
+        * { box-sizing: border-box; }
+
+        html,
+        body {
+            min-width: 320px;
+            min-height: 100%;
+            margin: 0;
+            background: var(--paper);
+        }
+
+        body {
+            min-height: 100svh;
+            color: var(--ink);
+            font-family: var(--body);
+            line-height: 1.4;
+        }
+
+        button,
+        input { font: inherit; }
+
+        button { cursor: pointer; }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        button:focus-visible {
+            outline: 3px solid var(--focus);
+            outline-offset: 3px;
+        }
+
+        .launcher-page {
+            min-height: 100svh;
+        }
+
+        .stage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100svh;
+            padding: clamp(24px, 6vw, 64px);
+            overflow-x: auto;
+            overflow-y: auto;
+            background:
+                linear-gradient(rgba(240, 240, 234, 0.07) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(240, 240, 234, 0.07) 1px, transparent 1px),
+                var(--stage);
+            background-size: 24px 24px;
+        }
+
+        .void-panel {
+            position: relative;
+            display: flex;
+            width: var(--panel-width);
+            height: var(--panel-height);
+            flex: 0 0 var(--panel-width);
+            flex-direction: column;
+            overflow: hidden;
+            border: 2px solid var(--white);
+            background: var(--black);
+            color: var(--white);
+            font-family: var(--mono);
+        }
+
+        .void-panel[aria-busy="true"] { cursor: wait; }
+
+        .void-form {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            height: 64px;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(240, 240, 234, 0.48);
+        }
+
+        .void-prompt {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .void-input {
+            min-width: 0;
+            flex: 1;
+            padding: 0;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--white);
+            caret-color: var(--white);
+            font-family: var(--mono);
+            font-size: 14px;
+        }
+
+        .void-input::placeholder {
+            color: var(--muted);
+            opacity: 1;
+        }
+
+        .void-input:disabled {
+            cursor: wait;
+            opacity: 0.72;
+        }
+
+        .void-count {
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .void-list {
+            display: grid;
+            min-height: 0;
+            height: 266px;
+            padding: 9px 12px;
+            overflow-x: hidden;
+            overflow-y: auto;
+            scrollbar-color: var(--gray) transparent;
+            scrollbar-width: thin;
+        }
+
+        .void-list > * {
+            grid-area: 1 / 1;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .app-row {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+            min-height: 52px;
+            padding: 7px 44px 7px 14px;
+            border: 0;
+            border-bottom: 1px solid rgba(240, 240, 234, 0.12);
+            background: transparent;
+            color: var(--gray);
+            text-align: left;
+        }
+
+        .app-row:last-of-type { border-bottom: 0; }
+
+        .app-row:hover,
+        .app-row:focus-visible {
+            background: rgba(240, 240, 234, 0.06);
+            color: var(--white);
+        }
+
+        .app-row.is-selected,
+        .app-row.is-launching {
+            background: rgba(240, 240, 234, 0.09);
+            color: var(--white);
+        }
+
+        .app-row.is-selected::after,
+        .app-row.is-launching::after {
+            position: absolute;
+            top: 50%;
+            right: 16px;
+            color: var(--white);
+            content: "→";
+            font-size: 14px;
+            line-height: 1;
+            transform: translateY(-50%);
+        }
+
+        .app-mark {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            margin-right: 14px;
+            flex: 0 0 auto;
+            place-items: center;
+            border: 1px solid currentColor;
+            border-radius: 1px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .app-copy { min-width: 0; }
+
+        .app-name,
+        .app-kind {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .app-name {
+            color: var(--white);
+            font-size: 14px;
+        }
+
+        .app-kind {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .empty-state {
+            display: flex;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+            flex-direction: column;
+            gap: 12px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .empty-state[hidden] { display: none; }
+
+        .empty-state strong {
+            color: var(--white);
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .reopen-button {
+            min-width: 44px;
+            min-height: 44px;
+            padding: 12px 16px;
+            border: 1px solid currentColor;
+            border-radius: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--mono);
+            font-size: 10px;
+        }
+
+        .void-foot {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 46px;
+            margin-top: auto;
+            padding: 0 20px;
+            border-top: 1px solid rgba(240, 240, 234, 0.14);
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.02em;
+        }
+
+        .shortcut-group {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .shortcut {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        .shortcut kbd {
+            min-width: 24px;
+            padding: 3px 6px;
+            border: 1px solid rgba(240, 240, 234, 0.25);
+            color: var(--white);
+            font: inherit;
+            line-height: 1;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .shortcut-label { color: var(--muted); }
+
+        .shortcut:first-child kbd { min-width: 20px; }
+
+        .shortcut:first-child {
+            gap: 4px;
+        }
+
+        .reopen-button:hover,
+        .reopen-button:focus-visible {
+            background: var(--ink);
+            color: var(--paper);
+        }
+
+        @media (max-width: 760px) {
+            .stage {
+                align-items: flex-start;
+                justify-content: flex-start;
+                padding: 14px;
+            }
+        }
+
+        @media (max-height: 460px) {
+            .stage {
+                align-items: flex-start;
+                padding-block: 14px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; }
+        }
+    </style>
+</head>
+<body>
+    <main class="launcher-page">
+        <h1 class="sr-only">Klauncher application launcher</h1>
+        <div class="stage">
+            <section class="void-panel" id="void-panel" aria-label="Klauncher application launcher">
+                <form class="void-form" id="void-form">
+                    <label class="sr-only" for="void-input">Search applications</label>
+                    <span class="void-prompt" aria-hidden="true">&gt;</span>
+                    <input class="void-input" id="void-input" type="search" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" placeholder="search applications..." autocomplete="off" spellcheck="false" aria-controls="void-listbox" aria-describedby="void-help" aria-activedescendant="app-visual-studio-code">
+                    <span class="void-count" id="void-count" aria-live="polite">04 / 04</span>
+                    <span class="sr-only" id="void-help">Use Up and Down to navigate, Enter to launch, or Escape to close.</span>
+                </form>
+
+                <div class="void-list" id="void-list">
+                    <div class="void-options" id="void-listbox" role="listbox" aria-label="Available applications">
+                        <button class="app-row is-selected" id="app-visual-studio-code" type="button" role="option" aria-selected="true" tabindex="-1" data-name="Visual Studio Code" data-kind="Development">
+                            <span class="app-mark" aria-hidden="true">VS</span>
+                            <span class="app-copy"><span class="app-name">Visual Studio Code</span><span class="app-kind">Development</span></span>
+                        </button>
+                        <button class="app-row" id="app-firefox" type="button" role="option" aria-selected="false" tabindex="-1" data-name="Firefox" data-kind="Web Browser">
+                            <span class="app-mark" aria-hidden="true">FI</span>
+                            <span class="app-copy"><span class="app-name">Firefox</span><span class="app-kind">Web Browser</span></span>
+                        </button>
+                        <button class="app-row" id="app-terminal" type="button" role="option" aria-selected="false" tabindex="-1" data-name="Terminal" data-kind="Shell">
+                            <span class="app-mark" aria-hidden="true">TE</span>
+                            <span class="app-copy"><span class="app-name">Terminal</span><span class="app-kind">Shell</span></span>
+                        </button>
+                        <button class="app-row" id="app-files" type="button" role="option" aria-selected="false" tabindex="-1" data-name="Files" data-kind="File Manager">
+                            <span class="app-mark" aria-hidden="true">FI</span>
+                            <span class="app-copy"><span class="app-name">Files</span><span class="app-kind">File Manager</span></span>
+                        </button>
+                    </div>
+                    <div class="empty-state" id="empty-state" role="status" aria-live="polite" aria-atomic="true" hidden>
+                        <strong id="empty-title">No applications found</strong>
+                    </div>
+                </div>
+
+                <div class="void-foot" role="group" aria-label="Keyboard controls: Up and Down move, Enter opens, Escape exits">
+                    <div class="shortcut-group" aria-hidden="true">
+                        <span class="shortcut"><kbd>↑</kbd><kbd>↓</kbd><span class="shortcut-label">move</span></span>
+                        <span class="shortcut"><kbd>enter</kbd><span class="shortcut-label">open</span></span>
+                        <span class="shortcut"><kbd>esc</kbd><span class="shortcut-label">exit</span></span>
+                    </div>
+                    <span class="sr-only"><strong id="void-selection">Visual Studio Code</strong> / <span id="void-action">application selection</span> / <span id="void-hint">esc to close</span></span>
+                </div>
+                <p class="sr-only" id="void-status" aria-live="polite">Launcher ready.</p>
+            </section>
+
+            <button class="reopen-button" id="reopen-button" type="button" hidden>open launcher</button>
+        </div>
+    </main>
+
+    <script>
+        const form = document.querySelector("#void-form");
+        const panel = document.querySelector("#void-panel");
+        const input = document.querySelector("#void-input");
+        const count = document.querySelector("#void-count");
+        const selection = document.querySelector("#void-selection");
+        const action = document.querySelector("#void-action");
+        const hint = document.querySelector("#void-hint");
+        const status = document.querySelector("#void-status");
+        const emptyState = document.querySelector("#empty-state");
+        const emptyTitle = document.querySelector("#empty-title");
+        const reopenButton = document.querySelector("#reopen-button");
+        const allRows = [...document.querySelectorAll(".app-row")];
+        let visibleRows = [...allRows];
+        let selectedIndex = 0;
+        let launchTimer;
+
+        const announce = (message) => {
+            status.textContent = message;
+        };
+
+        const setSelected = (row, focusInput = false) => {
+            allRows.forEach((item) => {
+                const selected = item === row;
+                item.classList.toggle("is-selected", selected);
+                item.setAttribute("aria-selected", String(selected));
+                item.tabIndex = -1;
+            });
+
+            if (!row) {
+                input.removeAttribute("aria-activedescendant");
+                selection.textContent = "No selection";
+                action.textContent = "refine search";
+                selectedIndex = -1;
+                return;
+            }
+
+            selection.textContent = row.dataset.name;
+            action.textContent = "application selection";
+            selectedIndex = Math.max(0, visibleRows.indexOf(row));
+            input.setAttribute("aria-activedescendant", row.id);
+            if (focusInput) input.focus();
+        };
+
+        const updateCount = () => {
+            count.textContent = `${String(visibleRows.length).padStart(2, "0")} / ${String(allRows.length).padStart(2, "0")}`;
+        };
+
+        const filterRows = () => {
+            const term = input.value.trim().toLowerCase();
+            visibleRows = allRows.filter((row) => {
+                const visible = !term || `${row.dataset.name} ${row.dataset.kind}`.toLowerCase().includes(term);
+                row.hidden = !visible;
+                return visible;
+            });
+
+            updateCount();
+            emptyState.hidden = visibleRows.length > 0;
+
+            if (!visibleRows.length) {
+                setSelected(null);
+                emptyTitle.textContent = term
+                    ? `No applications found for “${input.value.trim()}”`
+                    : "No applications available";
+                announce(term ? `No applications found for ${input.value.trim()}.` : "No applications available.");
+                return;
+            }
+
+            const current = visibleRows.find((row) => row.classList.contains("is-selected")) || visibleRows[0];
+            setSelected(current);
+            announce(`${visibleRows.length} applications available.`);
+        };
+
+        const moveSelection = (direction) => {
+            if (!visibleRows.length) return;
+            selectedIndex = (selectedIndex + direction + visibleRows.length) % visibleRows.length;
+            setSelected(visibleRows[selectedIndex], true);
+            announce(`${visibleRows[selectedIndex].dataset.name} selected.`);
+        };
+
+        const closeLauncher = (reason) => {
+            if (launchTimer) {
+                window.clearTimeout(launchTimer);
+                launchTimer = undefined;
+            }
+
+            const launchedName = selection.textContent;
+            panel.hidden = true;
+            panel.removeAttribute("aria-busy");
+            input.setAttribute("aria-expanded", "false");
+            reopenButton.hidden = false;
+            input.disabled = false;
+            input.value = "";
+            hint.textContent = "esc to close";
+            allRows.forEach((row) => row.classList.remove("is-launching"));
+            filterRows();
+            input.removeAttribute("aria-activedescendant");
+            reopenButton.focus();
+            announce(reason === "launch"
+                ? `${launchedName} launch preview complete. Launcher closed.`
+                : "Launcher closed. Press Enter to open it again.");
+        };
+
+        const openLauncher = () => {
+            panel.hidden = false;
+            panel.removeAttribute("aria-busy");
+            input.setAttribute("aria-expanded", "true");
+            reopenButton.hidden = true;
+            input.disabled = false;
+            input.value = "";
+            hint.textContent = "esc to close";
+            filterRows();
+            input.focus();
+            announce("Launcher open. Use Up and Down to navigate.");
+        };
+
+        const launchSelected = () => {
+            if (panel.getAttribute("aria-busy") === "true") return;
+            if (!visibleRows.length) {
+                announce("No application selected. Refine the search to continue.");
+                input.focus();
+                return;
+            }
+
+            const row = visibleRows[selectedIndex] || visibleRows[0];
+            setSelected(row);
+            row.classList.add("is-launching");
+            panel.setAttribute("aria-busy", "true");
+            input.disabled = true;
+            action.textContent = "launching";
+            hint.textContent = "starting...";
+            announce(`Launching ${row.dataset.name}.`);
+            launchTimer = window.setTimeout(() => closeLauncher("launch"), 420);
+        };
+
+        input.addEventListener("input", filterRows);
+        input.addEventListener("search", filterRows);
+
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            launchSelected();
+        });
+
+        allRows.forEach((row) => {
+            row.addEventListener("click", () => {
+                setSelected(row, true);
+                announce(`${row.dataset.name} selected.`);
+            });
+        });
+
+        reopenButton.addEventListener("click", openLauncher);
+
+        document.addEventListener("keydown", (event) => {
+            if (panel.hidden) return;
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeLauncher("escape");
+                return;
+            }
+
+            if (panel.getAttribute("aria-busy") === "true") return;
+
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                moveSelection(event.key === "ArrowDown" ? 1 : -1);
+                return;
+            }
+
+            if (event.key === "Enter") {
+                event.preventDefault();
+                launchSelected();
+            }
+        });
+
+        filterRows();
+        input.focus();
+    </script>
+</body>
+</html>

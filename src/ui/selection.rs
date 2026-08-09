@@ -122,6 +122,15 @@ mod tests {
     }
 
     #[test]
+    fn activating_a_clicked_row_returns_its_filtered_application_index() {
+        let mut state = SelectionState::new();
+        state.update_results(vec![7, 3, 9]);
+
+        assert_eq!(state.activate_row(1), Some(3));
+        assert_eq!(state.selected_row(), Some(0));
+    }
+
+    #[test]
     fn activation_without_selection_returns_none() {
         let mut state = SelectionState::new();
         state.update_results(Vec::new());

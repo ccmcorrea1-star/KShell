@@ -22,10 +22,13 @@ cargo check                       # type-check without producing a binary
 cargo test                        # run all unit tests
 cargo clippy --all-targets -- -D warnings  # lint and reject warnings
 cargo build                       # build the debug binary
+cargo install --path .            # install the current binary used by Niri
 cargo run                         # build and run the launcher
 ```
 
 The application reads user/system application entries through `XDG_DATA_HOME`, `XDG_DATA_DIRS`, and `HOME`, so Linux/XDG behavior should be used for manual testing. To try Niri integration, include `contrib/niri/klauncher.kdl` from the Niri configuration as described in that file.
+
+After modifying the launcher, run `cargo install --path .` before considering the change complete. Niri launches `klauncher` from `PATH`, not the binary under `target/`.
 
 ## Coding Style & Naming Conventions
 
