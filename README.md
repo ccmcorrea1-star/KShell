@@ -1,13 +1,13 @@
 # KShell
 
 Modular desktop shell workspace for Wayland and Niri, built with Rust, GTK4,
-and `gtk4-layer-shell`. The current user-facing component is Klauncher; Kbar
-is scaffolded for the future desktop bar.
+and `gtk4-layer-shell`. The current user-facing components are Klauncher and
+Kbar, a compact top bar for workspaces, time, and system status.
 
 ## Workspace layout
 
 - `apps/klauncher` — application launcher.
-- `apps/kbar` — future GTK4/layer-shell bar.
+- `apps/kbar` — GTK4/layer-shell top bar with live Niri workspace state.
 - `crates/theme` — shared design tokens, templates, and rendering logic.
 - `crates/niri` — reusable Niri/layer-shell identifiers.
 - `tools/theme-gen` — centralized theme generator.
@@ -23,6 +23,12 @@ without auxiliary metadata or decorative controls. Opening it adds a `28%`
 black dim over the desktop; the optional Niri integration adds a subtle
 compositor blur while the panel remains opaque.
 
+Kbar follows `mockups/bar-design.html`: a flat `32px` top surface with
+workspaces on the left, a geometrically centered Portuguese date/time readout,
+and compact system indicators on the right. It reserves its top edge through
+layer-shell, shows battery only when a battery is present, and uses the same
+generated Gruvbox tokens as Klauncher.
+
 ## Features
 
 - Overlay interface centered on the screen.
@@ -31,6 +37,7 @@ compositor blur while the panel remains opaque.
 - Supports icons by name or absolute path.
 - Shell-free execution that preserves the arguments defined in `Exec`.
 - Optional keyboard shortcut for Niri.
+- Top bar with live Niri workspaces, clock, volume, network, and optional battery.
 
 ## Requirements
 
@@ -52,6 +59,12 @@ From the project root:
 cargo build --release -p klauncher
 ```
 
+For the top bar, use:
+
+```sh
+cargo build --release -p kbar
+```
+
 The binary will be generated at `target/release/klauncher`. To install it in a
 local directory:
 
@@ -69,10 +82,17 @@ Run the launcher inside a Wayland session:
 klauncher
 ```
 
+Run the bar inside the same Wayland session with:
+
+```sh
+kbar
+```
+
 You can also run it directly through Cargo during development:
 
 ```sh
 cargo run -p klauncher
+cargo run -p kbar
 ```
 
 Available controls:
@@ -99,11 +119,22 @@ current desktop, and entries with an unavailable `TryExec` are not displayed.
 For entries that require a terminal, the launcher uses the terminal defined by
 `$TERMINAL`. If the variable is not set, it falls back to `kitty`.
 
+Kbar reads workspaces directly from `$NIRI_SOCKET` using Niri's JSON event
+stream. Volume is read and controlled exclusively through PipeWire via
+`wpctl`; network state uses NetworkManager's `nmcli` with a default-route
+fallback; battery data comes from Linux's `/sys/class/power_supply` interface.
+
+The volume module changes the level in 5% steps with the mouse wheel, opens its
+compact control with a left click, and toggles mute with a middle click. The
+popover mirrors the PipeWire state, exposes the slider, and lists the available
+outputs directly with the active one marked.
+
 ## Niri Integration
 
 Include the provided configuration file in your main Niri configuration:
 
 ```kdl
+include "/path/to/kshell/contrib/niri/kbar.kdl"
 include "/path/to/kshell/contrib/niri/klauncher.kdl"
 ```
 
@@ -116,6 +147,11 @@ The file configures `Mod+Space` to open the launcher. If the binary is in
 `~/.local/bin`, Niri must be able to find it through `PATH`. The compositor
 blur rule requires Niri `26.04` or newer; the GTK dim layer and its animation
 remain part of the launcher itself.
+
+`kbar.kdl` contains `spawn-at-startup "kbar"`, so Kbar starts with every Niri
+session. Its layer-shell surface uses the `my-shell-bar` namespace and reserves
+the top exclusive zone when it starts. Ensure `kbar` is installed in `PATH`,
+for example with `cargo install --path apps/kbar`.
 
 ## Development
 

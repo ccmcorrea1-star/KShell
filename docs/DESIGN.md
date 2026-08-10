@@ -6,6 +6,20 @@ Klauncher is a compact, keyboard-first surface for choosing an installed applica
 
 The selected application is marked by a narrow, muted left rail. Everything else stays quiet and legible so the query and selection remain the only hierarchy a person has to read.
 
+Kbar extends the same system into a low `32px` top surface. Its approved
+reference is `mockups/bar-design.html`: five workspace controls on the left,
+the Portuguese date/time centered by the viewport rather than by neighboring
+content, and icon-led system status on the right. The surface uses the same
+canvas, structural border, mono type, `2px` radius, and spacing vocabulary as
+Klauncher. It has no independent palette, elevation, blur, shadow, pill, or HUD
+treatment.
+
+The volume status module is an intentional extension of that quiet system
+surface: its icon and percentage remain visible in the bar, while the compact
+popover exposes only the PipeWire-backed control and a direct output list with
+the active device marked. It uses no separate audio state, HUD, glow, or
+decorative control chrome.
+
 ## Canonical tokens and consumers
 
 `crates/theme/src/tokens.rs` is the only canonical source for colors, semantic and ANSI palette entries, typography, spacing, radii, borders, and approved launcher geometry. It defines the neutral Gruvbox surfaces used by the launcher and the ANSI palette consumed by configured terminals.
@@ -13,6 +27,8 @@ The selected application is marked by a narrow, muted left rail. Everything else
 The generator renders these templates:
 
 - `crates/theme/templates/style.css` → `apps/klauncher/src/ui/style.css` for GTK
+- `crates/theme/templates/kbar.css` → `apps/kbar/src/ui/style.css` for GTK
+- `crates/theme/templates/kbar.kdl` → `contrib/niri/kbar.kdl` for Niri autostart
 - `crates/theme/templates/klauncher.kdl` → `contrib/niri/klauncher.kdl` for Niri
 - `crates/theme/templates/theme.css` → `mockups/theme.css` for the browser mockup
 - `crates/theme/templates/kitty.conf` → the active imported Kitty theme file

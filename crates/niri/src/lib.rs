@@ -7,6 +7,12 @@
 /// Namespace assigned to KShell launcher layer-shell surfaces.
 pub const LAUNCHER_NAMESPACE: &str = "my-shell-launcher";
 
+/// Namespace assigned to the KShell top bar layer-shell surface.
+pub const BAR_NAMESPACE: &str = "my-shell-bar";
+
+/// Command started by the default Niri bar autostart fragment.
+pub const BAR_COMMAND: &str = "kbar";
+
 /// Command started by the default Niri launcher binding.
 pub const LAUNCHER_COMMAND: &str = "klauncher";
 

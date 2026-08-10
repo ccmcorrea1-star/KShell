@@ -24,5 +24,6 @@ license = "MIT"
 gtk4 = { version = "0.11", features = ["v4_12"] }
 gtk4-layer-shell = "0.8"
 libc = "0.2"
+serde_json = "1"
 kshell-niri = { path = "crates/niri" }
 kshell-theme = { path = "crates/theme" }

@@ -2,11 +2,13 @@
 name = "kbar"
 version.workspace = true
 edition.workspace = true
-description = "The future KShell desktop bar"
+description = "A compact GTK4 desktop bar for Wayland and Niri"
 license.workspace = true
 
 [dependencies]
 gtk4.workspace = true
 gtk4-layer-shell.workspace = true
+libc.workspace = true
 kshell-niri.workspace = true
 kshell-theme.workspace = true
+serde_json.workspace = true

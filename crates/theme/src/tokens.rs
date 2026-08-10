@@ -69,11 +69,27 @@ pub const ROW_HEIGHT: i32 = 38;
 pub const PANEL_INSET: i32 = 14;
 pub const LIST_INSET: i32 = 7;
 pub const ICON_NAME_GAP: i32 = 10;
+pub const BAR_HEIGHT: i32 = SPACE_4 * 2;
+pub const BAR_CONTENT_PADDING: i32 = 6;
+pub const WORKSPACE_SIZE: i32 = SPACE_3 * 2;
+pub const WORKSPACE_GAP: i32 = RADIUS_PANEL;
+pub const STATUS_GAP: i32 = SPACE_4;
+pub const STATUS_ICON_SIZE: i32 = 14;
+pub const STATUS_LABEL_GAP: i32 = 5;
+pub const CLOCK_DIVIDER_GAP: i32 = 7;
+pub const VOLUME_MODULE_WIDTH: i32 = 60;
+pub const VOLUME_POPOVER_WIDTH: i32 = 240;
+pub const CALENDAR_POPOVER_WIDTH: i32 = VOLUME_POPOVER_WIDTH;
+pub const CALENDAR_DAY_SIZE: i32 = WORKSPACE_SIZE + SPACE_1;
+pub const VOLUME_OUTPUT_ROW_HEIGHT: i32 = 22;
+pub const ICON_STROKE_WIDTH: f64 = 1.25;
 pub const BACKDROP_BLUR_PASSES: i32 = 2;
 pub const BACKDROP_BLUR_OFFSET: i32 = 2;
 pub const BACKDROP_ANIMATION_MS: u32 = 150;
 
 const GTK_TEMPLATE: &str = include_str!("../templates/style.css");
+const KBAR_TEMPLATE: &str = include_str!("../templates/kbar.css");
+const KBAR_NIRI_TEMPLATE: &str = include_str!("../templates/kbar.kdl");
 const NIRI_TEMPLATE: &str = include_str!("../templates/klauncher.kdl");
 const MOCKUP_TEMPLATE: &str = include_str!("../templates/theme.css");
 const KITTY_TEMPLATE: &str = include_str!("../templates/kitty.conf");
@@ -84,6 +100,14 @@ const FASTFETCH_TEMPLATE: &str = include_str!("../templates/fastfetch.jsonc");
 
 pub fn render_gtk_css() -> String {
     render(GTK_TEMPLATE)
+}
+
+pub fn render_kbar_css() -> String {
+    render(KBAR_TEMPLATE)
+}
+
+pub fn render_kbar_niri() -> String {
+    render(KBAR_NIRI_TEMPLATE)
 }
 
 pub fn render_niri_kdl() -> String {
@@ -163,6 +187,8 @@ fn checked_in_generated_files(root: &Path) -> Vec<(PathBuf, String)> {
             root.join("apps/klauncher/src/ui/style.css"),
             render_gtk_css(),
         ),
+        (root.join("apps/kbar/src/ui/style.css"), render_kbar_css()),
+        (root.join("contrib/niri/kbar.kdl"), render_kbar_niri()),
         (root.join("contrib/niri/klauncher.kdl"), render_niri_kdl()),
         (root.join("mockups/theme.css"), render_mockup_css()),
     ]
@@ -857,6 +883,8 @@ fn render(template: &str) -> String {
 fn token_value(name: &str) -> Option<String> {
     let value = match name {
         "LAUNCHER_NAMESPACE" => kshell_niri::LAUNCHER_NAMESPACE.to_owned(),
+        "BAR_NAMESPACE" => kshell_niri::BAR_NAMESPACE.to_owned(),
+        "BAR_COMMAND" => kshell_niri::BAR_COMMAND.to_owned(),
         "LAUNCHER_COMMAND" => kshell_niri::LAUNCHER_COMMAND.to_owned(),
         "LAUNCHER_BINDING" => kshell_niri::LAUNCHER_BINDING.to_owned(),
         "BG_CANVAS" => BG_CANVAS.to_owned(),
@@ -914,6 +942,20 @@ fn token_value(name: &str) -> Option<String> {
         "PANEL_INSET" => PANEL_INSET.to_string(),
         "LIST_INSET" => LIST_INSET.to_string(),
         "ICON_NAME_GAP" => ICON_NAME_GAP.to_string(),
+        "BAR_HEIGHT" => BAR_HEIGHT.to_string(),
+        "BAR_CONTENT_PADDING" => BAR_CONTENT_PADDING.to_string(),
+        "WORKSPACE_SIZE" => WORKSPACE_SIZE.to_string(),
+        "WORKSPACE_GAP" => WORKSPACE_GAP.to_string(),
+        "STATUS_GAP" => STATUS_GAP.to_string(),
+        "STATUS_ICON_SIZE" => STATUS_ICON_SIZE.to_string(),
+        "STATUS_LABEL_GAP" => STATUS_LABEL_GAP.to_string(),
+        "CLOCK_DIVIDER_GAP" => CLOCK_DIVIDER_GAP.to_string(),
+        "VOLUME_MODULE_WIDTH" => VOLUME_MODULE_WIDTH.to_string(),
+        "VOLUME_POPOVER_WIDTH" => VOLUME_POPOVER_WIDTH.to_string(),
+        "CALENDAR_POPOVER_WIDTH" => CALENDAR_POPOVER_WIDTH.to_string(),
+        "CALENDAR_DAY_SIZE" => CALENDAR_DAY_SIZE.to_string(),
+        "VOLUME_OUTPUT_ROW_HEIGHT" => VOLUME_OUTPUT_ROW_HEIGHT.to_string(),
+        "ICON_STROKE_WIDTH" => ICON_STROKE_WIDTH.to_string(),
         "BACKDROP_BLUR_PASSES" => BACKDROP_BLUR_PASSES.to_string(),
         "BACKDROP_BLUR_OFFSET" => BACKDROP_BLUR_OFFSET.to_string(),
         _ => return None,
@@ -929,6 +971,8 @@ mod tests {
     fn templates_resolve_all_tokens() {
         for rendered in [
             render_gtk_css(),
+            render_kbar_css(),
+            render_kbar_niri(),
             render_niri_kdl(),
             render_mockup_css(),
             render_kitty_conf(),

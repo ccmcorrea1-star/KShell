@@ -1,0 +1,151 @@
+/* Static visual mockup only; the future native bar does not use this file. */
+
+:root {
+    --bar-height: 32px;
+    --bar-content-padding: 6px;
+    --workspace-size: 24px;
+    --workspace-gap: 2px;
+    --status-gap: 16px;
+}
+
+.bar-preview {
+    min-height: 100svh;
+    background: var(--canvas);
+}
+
+.desktop-surface {
+    min-height: 100svh;
+    background: var(--canvas);
+}
+
+.kshell-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+    height: var(--bar-height);
+    min-height: var(--bar-height);
+    overflow: hidden;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--canvas);
+    color: var(--foreground);
+}
+
+.workspace-nav,
+.system-status {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+}
+
+.workspace-nav {
+    gap: var(--workspace-gap);
+    padding-left: var(--bar-content-padding);
+}
+
+.workspace {
+    display: grid;
+    width: var(--workspace-size);
+    height: var(--workspace-size);
+    flex: 0 0 var(--workspace-size);
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-subtle);
+    background: transparent;
+    color: var(--secondary);
+    font-family: var(--mono);
+    font-size: var(--font-size-ui);
+    font-weight: var(--font-weight);
+    line-height: 1;
+}
+
+.workspace:hover,
+.workspace:focus-visible {
+    background: var(--hover);
+    color: var(--foreground);
+}
+
+.workspace.is-active {
+    background: var(--selected);
+    color: var(--foreground);
+}
+
+.clock {
+    display: inline-flex;
+    align-items: center;
+    justify-self: center;
+    gap: 7px;
+    white-space: nowrap;
+    font-size: var(--font-size-ui);
+    line-height: 1;
+}
+
+.clock-date,
+.clock-divider {
+    color: var(--secondary);
+}
+
+.clock-time {
+    color: var(--foreground);
+}
+
+.system-status {
+    justify-self: end;
+    gap: var(--status-gap);
+    padding-right: var(--bar-content-padding);
+    color: var(--foreground);
+    white-space: nowrap;
+}
+
+.status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--foreground);
+    font-size: var(--font-size-ui);
+    line-height: 1;
+}
+
+.status-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    overflow: visible;
+    fill: none;
+    stroke: var(--secondary);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.25;
+}
+
+.battery-level {
+    fill: var(--secondary);
+    stroke: none;
+}
+
+@media (max-width: 640px) {
+    :root {
+        --status-gap: 8px;
+    }
+
+    .status-item span {
+        display: none;
+    }
+
+    .status-item {
+        gap: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
