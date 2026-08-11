@@ -114,11 +114,9 @@ fn build_launcher(
     root.set_child(Some(&backdrop_revealer));
     root.add_overlay(&surface);
 
-    let (panel_width, panel_height) = panel_size(output_context.monitor.as_ref());
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 0);
     panel.add_css_class("launcher-panel");
-    panel.set_width_request(panel_width);
-    panel.set_height_request(panel_height);
+    apply_panel_size(&panel, panel_size(output_context.monitor.as_ref()));
     panel.set_margin_start(tokens::PANEL_MARGIN);
     panel.set_margin_end(tokens::PANEL_MARGIN);
     panel.set_margin_top(tokens::PANEL_MARGIN);
@@ -240,6 +238,19 @@ fn build_launcher(
     panel.append(&content);
 
     window.set_child(Some(&root));
+
+    let panel_for_map = panel.clone();
+    let window_for_map = window.clone();
+    let requested_monitor = output_context.monitor.clone();
+    window.connect_map(move |_| {
+        let monitor = requested_monitor
+            .as_ref()
+            .cloned()
+            .or_else(|| actual_monitor(&window_for_map));
+        let size = panel_size(monitor.as_ref())
+            .or_else(|| panel_size_for_geometry(window_for_map.width(), window_for_map.height()));
+        apply_panel_size(&panel_for_map, size);
+    });
 
     let finish = {
         let application = application.clone();
@@ -412,15 +423,37 @@ fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
     }
 }
 
-fn panel_size(monitor: Option<&gdk::Monitor>) -> (i32, i32) {
-    let Some(monitor) = monitor else {
-        return (tokens::PANEL_WIDTH, tokens::PANEL_HEIGHT);
+fn actual_monitor(window: &gtk::ApplicationWindow) -> Option<gdk::Monitor> {
+    let surface = window.surface()?;
+    let display = gdk::Display::default()?;
+    display.monitor_at_surface(&surface)
+}
+
+fn panel_size(monitor: Option<&gdk::Monitor>) -> Option<(i32, i32)> {
+    monitor.and_then(|monitor| {
+        let geometry = monitor.geometry();
+        panel_size_for_geometry(geometry.width(), geometry.height())
+    })
+}
+
+fn panel_size_for_geometry(width: i32, height: i32) -> Option<(i32, i32)> {
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+
+    Some((
+        tokens::PANEL_WIDTH.min((width - tokens::PANEL_MARGIN * 2).max(1)),
+        tokens::PANEL_HEIGHT.min((height - tokens::PANEL_MARGIN * 2).max(1)),
+    ))
+}
+
+fn apply_panel_size(panel: &gtk::Box, size: Option<(i32, i32)>) {
+    let Some((panel_width, panel_height)) = size else {
+        return;
     };
-    let geometry = monitor.geometry();
-    (
-        tokens::PANEL_WIDTH.min((geometry.width() - tokens::PANEL_MARGIN * 2).max(1)),
-        tokens::PANEL_HEIGHT.min((geometry.height() - tokens::PANEL_MARGIN * 2).max(1)),
-    )
+
+    panel.set_width_request(panel_width);
+    panel.set_height_request(panel_height);
 }
 
 fn install_css() {
@@ -438,7 +471,8 @@ fn install_css() {
 
 #[cfg(test)]
 mod tests {
-    use super::{empty_message, MAX_EMPTY_QUERY_CHARS};
+    use super::{empty_message, panel_size_for_geometry, MAX_EMPTY_QUERY_CHARS};
+    use kshell_theme::tokens;
 
     #[test]
     fn empty_message_uses_available_copy_without_a_query() {
@@ -465,5 +499,15 @@ mod tests {
             empty_message(&query),
             format!("No applications found for \"{displayed_query}…\"")
         );
+    }
+
+    #[test]
+    fn panel_size_is_limited_by_a_small_output_geometry() {
+        let (width, height) = panel_size_for_geometry(320, 240).expect("valid geometry");
+
+        assert!(width + tokens::PANEL_MARGIN * 2 <= 320);
+        assert!(height + tokens::PANEL_MARGIN * 2 <= 240);
+        assert!(width < tokens::PANEL_WIDTH);
+        assert!(height < tokens::PANEL_HEIGHT);
     }
 }

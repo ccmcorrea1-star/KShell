@@ -37,16 +37,7 @@ impl WorkspacesWidget {
             let output_for_click = output_name.clone();
             button.connect_clicked(move |_| {
                 let target_id = state_for_click.borrow().as_ref().and_then(|state| {
-                    output_for_click.as_deref().and_then(|output| {
-                        state
-                            .workspaces
-                            .iter()
-                            .find(|workspace| {
-                                workspace.output.as_deref() == Some(output)
-                                    && workspace.index == index
-                            })
-                            .map(|workspace| workspace.id)
-                    })
+                    workspace_id_for_click(state, output_for_click.as_deref(), index)
                 });
                 if let Some(target_id) = target_id {
                     kshell_niri::focus_workspace_id(target_id);
@@ -89,6 +80,30 @@ impl WorkspacesWidget {
     }
 }
 
+fn workspace_id_for_click(
+    state: &WorkspaceState,
+    output_name: Option<&str>,
+    index: usize,
+) -> Option<u64> {
+    let output = output_name.or(state.focused_output.as_deref());
+    if let Some(output) = output {
+        return state
+            .workspaces
+            .iter()
+            .find(|workspace| {
+                workspace.output.as_deref() == Some(output) && workspace.index == index
+            })
+            .map(|workspace| workspace.id);
+    }
+
+    let mut matches = state
+        .workspaces
+        .iter()
+        .filter(|workspace| workspace.index == index);
+    let id = matches.next()?.id;
+    matches.next().is_none().then_some(id)
+}
+
 fn active_slot(state: &WorkspaceState, output_name: Option<&str>) -> Option<usize> {
     let index = output_name
         .and_then(|output| state.active_index_for(output))
@@ -100,12 +115,12 @@ fn active_slot(state: &WorkspaceState, output_name: Option<&str>) -> Option<usiz
 
 #[cfg(test)]
 mod tests {
-    use super::{active_slot, DEFAULT_VISIBLE_WORKSPACE_SLOTS};
+    use super::{active_slot, workspace_id_for_click, DEFAULT_VISIBLE_WORKSPACE_SLOTS};
     use kshell_niri::{Workspace, WorkspaceState};
 
-    fn workspace(index: usize, output: &str, active: bool, focused: bool) -> Workspace {
+    fn workspace(id: u64, index: usize, output: &str, active: bool, focused: bool) -> Workspace {
         Workspace {
-            id: index as u64,
+            id,
             index,
             name: None,
             output: Some(output.to_owned()),
@@ -120,7 +135,7 @@ mod tests {
     fn five_visual_slots_are_independent_from_compositor_workspace_count() {
         assert_eq!(DEFAULT_VISIBLE_WORKSPACE_SLOTS, 5);
         let state = WorkspaceState {
-            workspaces: vec![workspace(7, "A", true, true)],
+            workspaces: vec![workspace(7, 7, "A", true, true)],
             focused_output: Some("A".to_owned()),
         };
         assert_eq!(active_slot(&state, Some("A")), None);
@@ -130,12 +145,26 @@ mod tests {
     fn output_context_selects_active_workspace_before_global_focus() {
         let state = WorkspaceState {
             workspaces: vec![
-                workspace(1, "A", true, true),
-                workspace(2, "B", true, false),
+                workspace(1, 1, "A", true, true),
+                workspace(2, 2, "B", true, false),
             ],
             focused_output: Some("A".to_owned()),
         };
         assert_eq!(active_slot(&state, Some("A")), Some(0));
         assert_eq!(active_slot(&state, Some("B")), Some(1));
+    }
+
+    #[test]
+    fn click_uses_focused_output_workspace_id_without_explicit_output() {
+        let state = WorkspaceState {
+            workspaces: vec![
+                workspace(41, 1, "A", true, true),
+                workspace(42, 1, "B", true, false),
+            ],
+            focused_output: Some("A".to_owned()),
+        };
+
+        assert_eq!(workspace_id_for_click(&state, None, 1), Some(41));
+        assert_eq!(workspace_id_for_click(&state, Some("B"), 1), Some(42));
     }
 }

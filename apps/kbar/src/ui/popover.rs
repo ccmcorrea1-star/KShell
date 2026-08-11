@@ -95,4 +95,15 @@ mod tests {
         assert!(state.close(PopoverId::Calendar));
         assert_eq!(state.active(), None);
     }
+
+    #[test]
+    fn the_close_guard_is_symmetric_when_switching_back_to_volume() {
+        let mut state = PopoverState::default();
+        assert_eq!(state.open(PopoverId::Calendar), None);
+        assert_eq!(state.open(PopoverId::Volume), Some(PopoverId::Calendar));
+        assert!(!state.close(PopoverId::Calendar));
+        assert_eq!(state.active(), Some(PopoverId::Volume));
+        assert!(state.close(PopoverId::Volume));
+        assert_eq!(state.active(), None);
+    }
 }
