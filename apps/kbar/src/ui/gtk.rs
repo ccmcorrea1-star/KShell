@@ -361,24 +361,69 @@ struct VolumeWidgets {
     popover_icon: StatusIcon,
     popover_percent: gtk::Label,
     volume_scale: gtk::Scale,
-    dragging_scale: Rc<Cell<bool>>,
-    pending_scale_value: Rc<Cell<Option<u8>>>,
-    waiting_for_sync: Rc<Cell<Option<u64>>>,
+    slider_state: Rc<Cell<SliderInteractionState>>,
     output_empty_label: gtk::Label,
     output_list: gtk::ListBox,
     rendered_output_menu: Rc<RefCell<Option<OutputMenuState>>>,
     action_sender: mpsc::Sender<system::VolumeAction>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct SliderInteractionState {
+    pointer_active: bool,
+    pending_value: Option<u8>,
+    waiting_for_sync: Option<u64>,
+    next_sync_token: u64,
+}
+
+impl SliderInteractionState {
+    fn value_changed(&mut self, percent: u8) {
+        // A new local value supersedes any older release Sync. In particular,
+        // an old response must not finish a newer keyboard or pointer action.
+        self.waiting_for_sync = None;
+        self.pending_value = Some(percent);
+    }
+
+    fn begin_pointer(&mut self, percent: u8) {
+        self.waiting_for_sync = None;
+        self.pointer_active = true;
+        self.pending_value = Some(percent);
+    }
+
+    fn finish_pointer(&mut self, percent: u8) -> Option<(u64, u8)> {
+        if !self.pointer_active {
+            return None;
+        }
+
+        self.pointer_active = false;
+        self.pending_value = Some(percent);
+        let token = self.next_sync_token.wrapping_add(1);
+        self.next_sync_token = token;
+        self.waiting_for_sync = Some(token);
+        Some((token, percent))
+    }
+
+    fn complete_sync(&mut self, token: u64) -> bool {
+        if self.waiting_for_sync != Some(token) {
+            return false;
+        }
+
+        self.waiting_for_sync = None;
+        self.pending_value = None;
+        true
+    }
+
+    fn preserves_local_value(&self) -> bool {
+        self.pointer_active || self.waiting_for_sync.is_some()
+    }
+}
+
 #[derive(Clone)]
 struct ScaleInteraction {
     scale: gtk::Scale,
-    dragging: Rc<Cell<bool>>,
-    pending_value: Rc<Cell<Option<u8>>>,
+    state: Rc<Cell<SliderInteractionState>>,
     pending_set_value: Rc<Cell<Option<u8>>>,
     set_timer: Rc<RefCell<Option<gtk::glib::SourceId>>>,
-    waiting_for_sync: Rc<Cell<Option<u64>>>,
-    next_sync_token: Rc<Cell<u64>>,
     action_sender: mpsc::Sender<system::VolumeAction>,
 }
 
@@ -461,6 +506,10 @@ fn build_volume(
     popover.connect_closed(move |_| {
         window_for_close.set_keyboard_mode(KeyboardMode::None);
     });
+    let refresh_action_sender = action_sender.clone();
+    popover.connect_show(move |_| {
+        let _ = refresh_action_sender.send(system::VolumeAction::RefreshOutputs);
+    });
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, tokens::SPACE_3);
     content.add_css_class("kbar-volume-content");
@@ -504,30 +553,22 @@ fn build_volume(
     volume_scale.set_draw_value(false);
     volume_scale.set_digits(0);
     volume_scale.set_increments(1.0, 5.0);
-    let dragging_scale = Rc::new(Cell::new(false));
-    let pending_scale_value = Rc::new(Cell::new(None));
+    let slider_state = Rc::new(Cell::new(SliderInteractionState::default()));
     let pending_set_value = Rc::new(Cell::new(None));
     let set_timer = Rc::new(RefCell::new(None));
-    let waiting_for_sync = Rc::new(Cell::new(None));
-    let next_sync_token = Rc::new(Cell::new(0));
     let scale_interaction = ScaleInteraction {
         scale: volume_scale.clone(),
-        dragging: Rc::clone(&dragging_scale),
-        pending_value: Rc::clone(&pending_scale_value),
+        state: Rc::clone(&slider_state),
         pending_set_value: Rc::clone(&pending_set_value),
         set_timer: Rc::clone(&set_timer),
-        waiting_for_sync: Rc::clone(&waiting_for_sync),
-        next_sync_token: Rc::clone(&next_sync_token),
         action_sender: action_sender.clone(),
     };
     let interaction_for_change = scale_interaction.clone();
     volume_scale.connect_change_value(move |_, _, value| {
         let percent = value.round().clamp(0.0, 100.0) as u8;
-        // This signal is emitted by GtkRange for a user-driven change. Keep
-        // the protection tied to it instead of relying on a separate click
-        // gesture that can be cancelled once the pointer starts dragging.
-        interaction_for_change.dragging.set(true);
-        interaction_for_change.pending_value.set(Some(percent));
+        let mut state = interaction_for_change.state.get();
+        state.value_changed(percent);
+        interaction_for_change.state.set(state);
         schedule_volume_set(
             percent,
             &interaction_for_change.pending_set_value,
@@ -645,9 +686,7 @@ fn build_volume(
             popover_icon,
             popover_percent,
             volume_scale,
-            dragging_scale: scale_interaction.dragging,
-            pending_scale_value: scale_interaction.pending_value,
-            waiting_for_sync: scale_interaction.waiting_for_sync,
+            slider_state: scale_interaction.state,
             output_empty_label,
             output_list,
             rendered_output_menu: Rc::new(RefCell::new(None)),
@@ -662,21 +701,17 @@ fn scale_percent(scale: &gtk::Scale) -> u8 {
 
 impl ScaleInteraction {
     fn begin(&self) {
-        self.dragging.set(true);
-        self.pending_value.set(Some(scale_percent(&self.scale)));
+        let mut state = self.state.get();
+        state.begin_pointer(scale_percent(&self.scale));
+        self.state.set(state);
     }
 
     fn finish(&self) {
-        if !self.dragging.replace(false) {
+        let mut state = self.state.get();
+        let Some((token, percent)) = state.finish_pointer(scale_percent(&self.scale)) else {
             return;
-        }
-
-        let percent = scale_percent(&self.scale);
-        self.pending_value.set(Some(percent));
-
-        let token = self.next_sync_token.get().wrapping_add(1);
-        self.next_sync_token.set(token);
-        self.waiting_for_sync.set(Some(token));
+        };
+        self.state.set(state);
 
         flush_volume_set(
             &self.pending_set_value,
@@ -770,24 +805,26 @@ fn apply_system_status(widgets: &StatusWidgets, status: system::SystemStatus) {
     widgets.network_icon.set_state(IconState::Network {
         connected: status.network_connected,
     });
-    widgets
-        .network_item
-        .set_tooltip_text(Some(if status.network_connected {
-            "Rede conectada"
-        } else {
-            "Rede desconectada"
-        }));
+    let network_tooltip = if status.network_connected {
+        "Rede conectada"
+    } else {
+        "Rede desconectada"
+    };
+    if widgets.network_item.tooltip_text().as_deref() != Some(network_tooltip) {
+        widgets.network_item.set_tooltip_text(Some(network_tooltip));
+    }
 
     if let Some(battery) = status.battery {
-        widgets
-            .battery_label
-            .set_label(&format!("{}%", battery.percent));
+        let battery_label = format!("{}%", battery.percent);
+        set_label_if_changed(&widgets.battery_label, &battery_label);
         widgets.battery_icon.set_state(IconState::Battery {
             percent: battery.percent,
             charging: battery.charging,
         });
-        widgets.battery_item.set_visible(true);
-    } else {
+        if !widgets.battery_item.is_visible() {
+            widgets.battery_item.set_visible(true);
+        }
+    } else if widgets.battery_item.is_visible() {
         widgets.battery_item.set_visible(false);
     }
 }
@@ -797,24 +834,23 @@ fn apply_volume_status(
     status: &system::VolumeStatus,
     sync_token: Option<u64>,
 ) {
-    if sync_token.is_some() && widgets.waiting_for_sync.get() == sync_token {
-        widgets.waiting_for_sync.set(None);
-        widgets.pending_scale_value.set(None);
+    let mut slider_state = widgets.slider_state.get();
+    if let Some(sync_token) = sync_token {
+        slider_state.complete_sync(sync_token);
     }
 
-    let preserve_local_value =
-        widgets.dragging_scale.get() || widgets.waiting_for_sync.get().is_some();
+    let preserve_local_value = slider_state.preserves_local_value();
     let displayed_percent = volume_percent_for_display(
-        widgets.pending_scale_value.get(),
-        widgets.dragging_scale.get(),
-        widgets.waiting_for_sync.get().is_some(),
+        slider_state.pending_value,
+        slider_state.pointer_active,
+        slider_state.waiting_for_sync.is_some(),
         status.percent,
     );
     let volume_label = displayed_percent
         .map(|percent| format!("{percent}%"))
         .unwrap_or_else(|| "—%".to_owned());
-    widgets.volume_label.set_label(&volume_label);
-    widgets.popover_percent.set_label(&volume_label);
+    set_label_if_changed(&widgets.volume_label, &volume_label);
+    set_label_if_changed(&widgets.popover_percent, &volume_label);
 
     let volume_state = IconState::Volume {
         percent: displayed_percent,
@@ -824,20 +860,33 @@ fn apply_volume_status(
     widgets.popover_icon.set_state(volume_state);
 
     if let Some(percent) = displayed_percent {
-        widgets.volume_scale.set_sensitive(true);
-        if !preserve_local_value {
-            widgets.volume_scale.set_value(f64::from(percent));
+        if !widgets.volume_scale.is_sensitive() {
+            widgets.volume_scale.set_sensitive(true);
         }
-    } else {
+        if !preserve_local_value {
+            let value = f64::from(percent);
+            if (widgets.volume_scale.value() - value).abs() > f64::EPSILON {
+                widgets.volume_scale.set_value(value);
+            }
+        }
+    } else if widgets.volume_scale.is_sensitive() {
         widgets.volume_scale.set_sensitive(false);
     }
 
+    if !preserve_local_value {
+        slider_state.pending_value = None;
+    }
+    widgets.slider_state.set(slider_state);
+
     let current_output_id = status.current_output.as_ref().map(|output| output.id);
     let has_outputs = !status.outputs.is_empty();
-    widgets.output_empty_label.set_visible(!has_outputs);
-    widgets
-        .output_list
-        .set_visible(should_show_output_list(status.outputs.len()));
+    if widgets.output_empty_label.is_visible() == has_outputs {
+        widgets.output_empty_label.set_visible(!has_outputs);
+    }
+    let show_output_list = should_show_output_list(status.outputs.len());
+    if widgets.output_list.is_visible() != show_output_list {
+        widgets.output_list.set_visible(show_output_list);
+    }
 
     let output_menu_state = OutputMenuState {
         current_output_id,
@@ -876,6 +925,12 @@ fn apply_volume_status(
     *widgets.rendered_output_menu.borrow_mut() = Some(output_menu_state);
 }
 
+fn set_label_if_changed(label: &gtk::Label, text: &str) {
+    if label.text().as_str() != text {
+        label.set_label(text);
+    }
+}
+
 fn volume_percent_for_display(
     local_value: Option<u8>,
     pointer_active: bool,
@@ -893,14 +948,14 @@ fn should_show_output_list(output_count: usize) -> bool {
     output_count > 0
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum IconKind {
     Volume,
     Network,
     Battery,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum IconState {
     Volume { percent: Option<u8>, muted: bool },
     Network { connected: bool },
@@ -934,9 +989,16 @@ impl StatusIcon {
     }
 
     fn set_state(&self, state: IconState) {
+        if !icon_state_changed(self.state.get(), state) {
+            return;
+        }
         self.state.set(state);
         self.area.queue_draw();
     }
+}
+
+fn icon_state_changed(current: IconState, next: IconState) -> bool {
+    current != next
 }
 
 fn default_icon_state(kind: IconKind) -> IconState {
@@ -1103,7 +1165,10 @@ fn install_css() {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_show_output_list, volume_level, volume_percent_for_display, VolumeLevel};
+    use super::{
+        icon_state_changed, should_show_output_list, volume_level, volume_percent_for_display,
+        IconState, SliderInteractionState, VolumeLevel,
+    };
 
     #[test]
     fn volume_icon_uses_low_medium_and_high_thresholds() {
@@ -1129,6 +1194,81 @@ mod tests {
             volume_percent_for_display(Some(83), false, false, Some(61)),
             Some(61)
         );
+    }
+
+    #[test]
+    fn change_value_does_not_start_pointer_interaction() {
+        let mut state = SliderInteractionState::default();
+
+        state.value_changed(72);
+
+        assert!(!state.pointer_active);
+        assert_eq!(state.pending_value, Some(72));
+        assert_eq!(state.waiting_for_sync, None);
+    }
+
+    #[test]
+    fn pointer_lifecycle_keeps_external_updates_off_the_thumb() {
+        let mut state = SliderInteractionState::default();
+        state.begin_pointer(40);
+        state.value_changed(83);
+
+        assert_eq!(
+            volume_percent_for_display(
+                state.pending_value,
+                state.pointer_active,
+                state.waiting_for_sync.is_some(),
+                Some(61),
+            ),
+            Some(83)
+        );
+
+        let (token, percent) = state.finish_pointer(83).expect("pointer was active");
+        assert_eq!(percent, 83);
+        assert!(!state.pointer_active);
+        assert_eq!(state.waiting_for_sync, Some(token));
+    }
+
+    #[test]
+    fn old_sync_does_not_finish_a_newer_interaction() {
+        let mut state = SliderInteractionState::default();
+        state.begin_pointer(40);
+        let (old_token, _) = state.finish_pointer(50).expect("first pointer interaction");
+        state.begin_pointer(50);
+        let (new_token, _) = state
+            .finish_pointer(70)
+            .expect("second pointer interaction");
+
+        assert!(!state.complete_sync(old_token));
+        assert_eq!(state.waiting_for_sync, Some(new_token));
+    }
+
+    #[test]
+    fn confirmed_sync_returns_backend_to_being_the_source_of_truth() {
+        let mut state = SliderInteractionState::default();
+        state.begin_pointer(40);
+        let (token, _) = state.finish_pointer(83).expect("pointer interaction");
+
+        assert!(state.complete_sync(token));
+        assert_eq!(
+            volume_percent_for_display(
+                state.pending_value,
+                state.pointer_active,
+                state.waiting_for_sync.is_some(),
+                Some(61),
+            ),
+            Some(61)
+        );
+    }
+
+    #[test]
+    fn identical_icon_state_does_not_request_a_redraw() {
+        let state = IconState::Network { connected: true };
+        assert!(!icon_state_changed(state, state));
+        assert!(icon_state_changed(
+            state,
+            IconState::Network { connected: false }
+        ));
     }
 
     #[test]
