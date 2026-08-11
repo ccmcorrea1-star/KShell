@@ -1,52 +1,79 @@
-# Repository Guidelines
+# Diretrizes para agentes
 
-## Project Structure & Module Organization
+KShell é um workspace Cargo em Rust 2021 para um desktop shell Wayland/Niri
+construído com GTK4 e `gtk4-layer-shell`.
 
-KShell is a Rust 2021 Cargo workspace for a minimal Wayland/Niri desktop shell.
+## Regras estáveis do repositório
 
-- `apps/klauncher/src/main.rs` coordinates loading, the GTK session, and launching.
-- `apps/klauncher/src/core/desktop.rs` discovers and parses XDG `.desktop` application files.
-- `apps/klauncher/src/core/search.rs` implements fuzzy matching and ranking.
-- `apps/klauncher/src/core/launch.rs` starts selected applications in their own Unix session.
-- `apps/klauncher/src/ui/gtk.rs` owns the GTK4/gtk4-layer-shell launcher interface.
-- `crates/theme` owns shared visual tokens, templates, and rendering helpers.
-- `crates/niri` owns reusable Niri integration identifiers.
-- `tools/theme-gen` provides the centralized theme generation command.
-- `contrib/niri/klauncher.kdl` contains the optional Niri keybinding/window configuration.
-- Tests are colocated in `#[cfg(test)]` modules; there is currently no separate `tests/` directory.
+- Trate `specs/NNN-feature/spec.md` como a baseline de comportamento de uma
+  funcionalidade existente. Atualize `plan.md` e `tasks.md` quando uma mudança
+  solicitada afetar essa funcionalidade.
+- Mantenha os princípios globais em `.specify/memory/constitution.md`, os
+  fatos arquiteturais em `docs/architecture/` e as decisões permanentes em
+  `docs/decisions/`. Não copie o mesmo requisito em vários documentos.
+- Preserve o comportamento visível para o usuário e a compatibilidade atuais,
+  salvo quando uma spec de funcionalidade alterar isso explicitamente. Não
+  implemente comportamentos marcados como `TBD`.
+- Toda documentação futura do fluxo Spec-Driven deve ser escrita em português
+  brasileiro (pt-BR), sem criar documentação bilíngue. Mantenha em inglês os
+  identificadores técnicos, comandos, APIs, bibliotecas, classes, funções,
+  tipos e variáveis.
+- Use Rust estável, indentação de quatro espaços, `rustfmt`, `snake_case` para
+  funções/variáveis/módulos, `UpperCamelCase` para tipos e
+  `SCREAMING_SNAKE_CASE` para constantes.
+- Mantenha a lógica das aplicações separada pelos limites de módulos
+  existentes: `apps/klauncher` é responsável pelo core/UI do launcher,
+  `apps/kbar` pelo UI/services da barra, `crates/niri` pela integração Niri
+  reutilizável, `crates/theme` por tokens/templates/rendering compartilhados e
+  `tools/theme-gen` pela geração.
+- Mantenha os testes unitários junto da implementação que cobrem. Use
+  `tests/` apenas para testes que realmente atravessem limites de pacotes; não
+  mova testes apenas para atender ao layout SDD.
+- Trate arquivos `.desktop`, variáveis de ambiente, saída de comandos e
+  caminhos como não confiáveis. Preserve o modelo de launch sem shell, os
+  limites dos argumentos e o comportamento de subprocessos com limites
+  explícitos. Não registre argumentos de comandos ou caminhos pessoais sem
+  necessidade.
+- Artefatos CSS/KDL/mockup gerados devem ser alterados pelo theme generator
+  quando seus templates ou tokens mudarem; não edite outputs gerados
+  manualmente.
 
-## Build, Test, and Development Commands
+## Comandos do projeto
 
-Run commands from the repository root:
+Execute os comandos a partir da raiz do repositório:
 
 ```sh
-cargo fmt --check                 # verify rustfmt formatting
-cargo check --workspace           # type-check all workspace packages
-cargo test --workspace            # run all workspace unit tests
-cargo clippy --all-targets -- -D warnings  # lint and reject warnings
-cargo build -p klauncher          # build the launcher debug binary
-cargo install --path apps/klauncher # install the binary used by Niri
-cargo run -p klauncher            # build and run the launcher
-cargo run -p kshell-theme-gen -- --write # regenerate checked-in theme files
-cargo run -p kshell-theme-gen -- --check # verify generated theme files
+cargo fmt --all -- --check
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace
+cargo build --release -p klauncher   # ou: -p kbar
+cargo run -p klauncher              # ou: -p kbar
+cargo run -p kshell-theme-gen -- --check
+cargo run -p kshell-theme-gen -- --write
 ```
 
-The application reads user/system application entries through `XDG_DATA_HOME`, `XDG_DATA_DIRS`, and `HOME`, so Linux/XDG behavior should be used for manual testing. To try Niri integration, include `contrib/niri/klauncher.kdl` from the Niri configuration as described in that file.
+O launcher e a barra exigem Linux, uma sessão Wayland, GTK4 e
+`gtk4-layer-shell` para execução manual. Depois de alterar qualquer uma das
+aplicações, instale o binário usado pelo Niri com `cargo install --path apps/klauncher`
+ou `cargo install --path apps/kbar`; o Niri inicia os binários por meio do
+`PATH`.
 
-After modifying the launcher, run `cargo install --path apps/klauncher` before considering the change complete. Niri launches `klauncher` from `PATH`, not the binary under `target/`.
+## Validação obrigatória
 
-## Coding Style & Naming Conventions
+Antes de entregar uma mudança de código ou de artefatos gerados, execute as
+verificações de formatação, testes do workspace, lint, build e tema gerado:
 
-Use stable Rust 2021 and four-space indentation; let `rustfmt` determine layout. Keep functions focused and prefer explicit `Result`/`Option` handling over panics in runtime code. Use `snake_case` for functions, variables, and modules; `UpperCamelCase` for types; and `SCREAMING_SNAKE_CASE` for constants. Avoid shell invocation when handling desktop `Exec` entries—preserve argument boundaries and validate parsing behavior.
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace
+cargo run -p kshell-theme-gen -- --check
+```
 
-## Testing Guidelines
-
-Add focused unit tests beside the implementation they cover. Name tests by behavior, such as `parses_application_and_expands_exec_fields`. Cover parser edge cases, fuzzy ranking, UI rendering, and lifecycle-sensitive behavior where practical. Run `cargo test` and `cargo fmt --check` before submitting changes.
-
-## Commit & Pull Request Guidelines
-
-Use short, imperative Conventional Commit-style subjects, for example `feat: improve launcher UI` or `fix: handle missing desktop directories`. Pull requests should explain the user-visible or architectural change, link related issues when applicable, list validation commands, and include terminal screenshots or recordings for UI changes. Keep configuration changes and source changes clearly described.
-
-## Security & Configuration Tips
-
-Treat `.desktop` file contents and environment paths as untrusted input. Preserve the existing no-shell launch model, avoid logging command arguments or user paths unnecessarily, and test changes against malformed entries. Do not commit personal Niri configuration, machine-specific paths, or generated `target/` artifacts.
+Execute `cargo check --workspace` quando a mudança afetar compilação ou
+dependências Rust. Mudanças em GTK, layer-shell, Niri ou comportamento de
+serviços do sistema também exigem uma verificação manual em uma sessão
+Wayland/Niri adequada quando disponível.

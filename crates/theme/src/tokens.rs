@@ -2,8 +2,6 @@
 //!
 //! The renderer is called by `kshell-theme-gen` and its tests, while launcher
 //! processes only need the geometry constants at runtime.
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]

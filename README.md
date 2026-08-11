@@ -1,197 +1,159 @@
 # KShell
 
-Modular desktop shell workspace for Wayland and Niri, built with Rust, GTK4,
-and `gtk4-layer-shell`. The current user-facing components are Klauncher and
-Kbar, a compact top bar for workspaces, time, and system status.
+KShell is a modular desktop shell for Wayland and Niri, built with Rust,
+GTK4, and `gtk4-layer-shell`. The current workspace contains the Klauncher
+application launcher, the Kbar top bar, reusable Niri and theme crates, and a
+theme-generation tool.
+
+## Current features
+
+The repository documents the implemented baseline retrospectively. The
+feature specifications distinguish behavior confirmed by the code, behavior
+inferred from the current module boundaries, and decisions that are still
+`TBD`.
+
+| Feature | Current implementation | Specification |
+| --- | --- | --- |
+| Klauncher | XDG `.desktop` discovery, fuzzy search, keyboard/mouse selection, and shell-free launch | [001-klauncher](specs/001-klauncher/spec.md) |
+| Kbar | Niri workspaces, Portuguese clock/calendar, volume, network, and optional battery status | [002-kbar](specs/002-kbar/spec.md) |
+| Niri integration | JSON event stream, workspace state, reconnecting IPC, layer-shell identifiers, and generated KDL fragments | [003-niri-integration](specs/003-niri-integration/spec.md) |
+| Shared theme system | Canonical tokens, generated GTK/KDL/mockup files, and opt-in configured consumer updates | [004-theme-system](specs/004-theme-system/spec.md) |
 
 ## Workspace layout
 
-- `apps/klauncher` — application launcher.
-- `apps/kbar` — GTK4/layer-shell top bar with live Niri workspace state.
-- `crates/theme` — shared design tokens, templates, and rendering logic.
-- `crates/niri` — reusable Niri/layer-shell identifiers.
-- `tools/theme-gen` — centralized theme generator.
-- `contrib`, `mockups`, and `docs` — integration files, visual references, and documentation.
+- `apps/klauncher` — launcher core and GTK4/layer-shell interface.
+- `apps/kbar` — GTK4/layer-shell top bar and system-status services.
+- `crates/niri` — reusable Niri protocol, state, connection, and compatibility identifiers.
+- `crates/theme` — shared visual tokens, templates, and rendering helpers.
+- `tools/theme-gen` — command-line theme generator.
+- `contrib/niri` — generated optional Niri configuration fragments.
+- `mockups` — browser mockups and generated visual reference assets.
+- `specs` — feature specifications, technical plans, and executable task lists.
+- `docs/architecture` — global architecture and design-system documentation.
+- `docs/decisions` — accepted architectural decision records.
 
-## Appearance
-
-Klauncher uses a compact `520 × 300px` Gruvbox panel with a `48px` search
-header and a scrolling application list. Each result contains only its desktop
-icon and Application name; long names truncate with an ellipsis. The selected
-row uses a muted left indicator, keeping the query and selection easy to read
-without auxiliary metadata or decorative controls. Opening it adds a `28%`
-black dim over the desktop; the optional Niri integration adds a subtle
-compositor blur while the panel remains opaque.
-
-Kbar follows `mockups/bar-design.html`: a flat `32px` top surface with
-workspaces on the left, a geometrically centered Portuguese date/time readout,
-and compact system indicators on the right. It reserves its top edge through
-layer-shell, shows battery only when a battery is present, and uses the same
-generated Gruvbox tokens as Klauncher.
-
-## Features
-
-- Overlay interface centered on the screen.
-- Fuzzy search by application name and generic name.
-- Reads `.desktop` files from standard XDG directories.
-- Supports icons by name or absolute path.
-- Shell-free execution that preserves the arguments defined in `Exec`.
-- Optional keyboard shortcut for Niri.
-- Top bar with live Niri workspaces, clock, volume, network, and optional battery.
+See the [architecture overview](docs/architecture/overview.md) for current
+boundaries and runtime flows, the [constitution](.specify/memory/constitution.md)
+for global feature rules, and the [test structure](tests/README.md) for the
+existing validation layout.
 
 ## Requirements
 
 - Linux with a Wayland session.
-- A Wayland compositor with layer-shell support.
+- A Wayland compositor with layer-shell support; Niri is the supported integration.
 - GTK4 with version 4.12 APIs or later.
 - The `gtk4-layer-shell` development library.
 - Stable Rust and Cargo.
+- `pkg-config` and the GTK4/layer-shell development packages for the distribution.
 
-Development package names vary between distributions. Also install `pkg-config`
-and the GTK4 and `gtk4-layer-shell` development packages available for your
-distribution.
+The launcher and bar cannot be meaningfully exercised without a graphical
+Wayland session, but their deterministic parsing, ranking, state, and service
+boundary logic is covered by the workspace tests.
 
-## Build
+## Build and run
 
 From the project root:
 
 ```sh
 cargo build --release -p klauncher
-```
-
-For the top bar, use:
-
-```sh
 cargo build --release -p kbar
 ```
 
-The binary will be generated at `target/release/klauncher`. To install it in a
-local directory:
-
-```sh
-install -Dm755 target/release/klauncher ~/.local/bin/klauncher
-```
-
-Make sure `~/.local/bin` is in your `PATH`.
-
-## Usage
-
-Run the launcher inside a Wayland session:
-
-```sh
-klauncher
-```
-
-Run the bar inside the same Wayland session with:
-
-```sh
-kbar
-```
-
-You can also run it directly through Cargo during development:
+Run either application directly inside a suitable session:
 
 ```sh
 cargo run -p klauncher
 cargo run -p kbar
 ```
 
-Available controls:
+To install binaries for Niri autostart and keybindings:
 
-- Type to filter applications.
-- `Up` and `Down` navigate through the results.
-- `Enter` launches the selected application.
-- `Esc` closes the launcher.
-- Click a result to launch it.
-- Click outside the panel to close it.
+```sh
+cargo install --path apps/klauncher
+cargo install --path apps/kbar
+```
 
-The launcher searches for `.desktop` files in:
+Niri resolves these commands through `PATH`.
 
-- `$XDG_DATA_HOME/applications`, or `~/.local/share/applications` when the
-  variable is not set.
-- Each directory listed in `$XDG_DATA_DIRS`, using its `applications`
-  subdirectory.
-- `/usr/local/share/applications` and `/usr/share/applications` when
-  `$XDG_DATA_DIRS` is not set.
+## Klauncher behavior
 
-Hidden entries, entries marked as `NoDisplay`, entries incompatible with the
-current desktop, and entries with an unavailable `TryExec` are not displayed.
+Klauncher presents a centered, keyboard-first overlay. It reads applications
+from `$XDG_DATA_HOME/applications` (or the standard home fallback), then from
+the application directories in `$XDG_DATA_DIRS`, with the standard system
+directories used when that variable is absent. Discovery is recursive and
+deduplicates desktop-file IDs.
 
-For entries that require a terminal, the launcher uses the terminal defined by
-`$TERMINAL`. If the variable is not set, it falls back to `kitty`.
+Entries that are not applications, are hidden, are marked `NoDisplay`, are
+not visible for the current desktop, or have an unavailable `TryExec` are
+excluded. Names use the preferred locale when a localized value is available.
+Search matches the application name and generic name with fuzzy ranking.
 
-Kbar reads workspaces directly from `$NIRI_SOCKET` using Niri's JSON event
-stream. Volume is read and controlled exclusively through PipeWire via
-`wpctl`; network state uses NetworkManager's `nmcli` with a default-route
-fallback; battery data comes from Linux's `/sys/class/power_supply` interface.
+The selected row is launched with `Enter` or a click. `Up` and `Down` navigate
+with wrapping, `Esc` closes the launcher, and clicking outside the panel closes
+it. The panel uses the current Gruvbox design tokens; see the
+[design-system architecture document](docs/architecture/design-system.md).
 
-The volume module changes the level in 5% steps with the mouse wheel, opens its
-compact control with a left click, and toggles mute with a middle click. The
-popover mirrors the PipeWire state, exposes the slider, and lists the available
-outputs directly with the active one marked.
+Desktop `Exec` entries are parsed into an executable and argument vector. They
+are never passed to a shell. Terminal entries use `$TERMINAL` and fall back to
+`kitty`; non-terminal applications run with inherited argument boundaries and
+without a terminal attached.
 
-## Niri Integration
+## Kbar and Niri integration
 
-Include the provided configuration file in your main Niri configuration:
+Include the generated fragments in the main Niri configuration:
 
 ```kdl
 include "/path/to/kshell/contrib/niri/kbar.kdl"
 include "/path/to/kshell/contrib/niri/klauncher.kdl"
 ```
 
-When using the fragment's Gruvbox layout values as an override, put this
-include after any existing visual `layout` or `window-rule` configuration that
-it is intended to replace. Keep it alongside, rather than inside, your own
-`binds` block.
+`kbar.kdl` starts Kbar with `spawn-at-startup`. `klauncher.kdl` keeps the
+existing `Mod+Space` binding, launcher blur rule, and quiet visual defaults.
+The current application IDs and layer-shell namespaces are compatibility
+identifiers; a rename requires a coordinated update of generated templates
+and compositor rules.
 
-The file configures `Mod+Space` to open the launcher. If the binary is in
-`~/.local/bin`, Niri must be able to find it through `PATH`. The compositor
-blur rule requires Niri `26.04` or newer; the GTK dim layer and its animation
-remain part of the launcher itself.
+Kbar reserves the top exclusive zone, displays five visual workspace slots,
+and receives workspace state from `$NIRI_SOCKET`. Its clock is updated on the
+minute and opens a Portuguese calendar popover. Volume is read and controlled
+through `wpctl`; the popover supports a slider, mute, and output selection.
+Network status uses `nmcli` with a default-route fallback, and battery status
+comes from `/sys/class/power_supply` when a battery is present. All service
+commands use bounded, shell-free subprocesses.
 
-`kbar.kdl` contains `spawn-at-startup "kbar"`, so Kbar starts with every Niri
-session. Its layer-shell surface uses the `my-shell-bar` namespace and reserves
-the top exclusive zone when it starts. Ensure `kbar` is installed in `PATH`,
-for example with `cargo install --path apps/kbar`.
+Set `KSHELL_OUTPUT` to a Wayland connector name such as `DP-1` to target an
+explicit output. Without it, the compositor selects the surface output; full
+multi-bar orchestration is not currently defined.
 
-The current application IDs (`com.klaucher.Bar` and `com.klaucher.Launcher`)
-and layer-shell namespaces (`my-shell-bar` and `my-shell-launcher`) are kept
-for compatibility with existing Niri rules and local configuration. A future
-rename must update the generated templates, compositor rules, and autostart
-configuration together.
+## Theme generation
 
-For an explicitly selected output, set `KSHELL_OUTPUT` to its Wayland connector
-name (for example `DP-1`) before launching Kbar or Klauncher. Without it, Kbar
-lets the compositor choose the surface output and falls back to the focused
-workspace; full multi-bar orchestration remains outside this refactor.
-
-## Development
-
-Useful commands:
+`crates/theme/src/tokens.rs` is the canonical source for shared colors,
+geometry, typography, and Niri identifiers. The generator renders the
+checked-in GTK, KDL, and mockup artifacts:
 
 ```sh
-cargo fmt --check
-cargo check --workspace
-cargo test --workspace
-cargo clippy --all-targets -- -D warnings
 cargo run -p kshell-theme-gen -- --write
 cargo run -p kshell-theme-gen -- --check
-cargo install --path apps/klauncher
 ```
 
-Unit tests are colocated with the modules in `apps/klauncher/src/`. The GTK interface requires
-a graphical Wayland session for manual testing; application discovery and
-parsing are covered by automated tests.
+When an installed consumer has an existing compatible configuration, `--write`
+also updates its theme values while preserving unrelated settings. See the
+[theme specification](specs/004-theme-system/spec.md) for the current scope.
 
-The theme renderer uses `crates/theme/src/tokens.rs` as its only color source. Before
-writing terminal, visualizer, and system-information themes it checks that the
-executable, user configuration, and an existing imported theme or active color
-section are present. Kitty and Alacritty are supported directly, Foot is
-supported when it is installed and already uses an imported color file, Cava is
-updated when it has an active `[color]` section, and Fastfetch is updated when
-`fastfetch/config.jsonc` is active. It writes only those theme sections/fields,
-preserving each terminal's font, shell, shortcuts, and other behavior and
-preserving Fastfetch's logo, modules, and layout; an existing Alacritty window
-opacity is set to `1.0` to keep the theme opaque.
+## Validation
+
+The required local checks are the same gates used by CI:
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace
+cargo run -p kshell-theme-gen -- --check
+```
+
+The [constitution](.specify/memory/constitution.md) and [agent guidelines](AGENTS.md)
+define the SDD and validation rules for future changes.
 
 ## License
 
