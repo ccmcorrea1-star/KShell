@@ -1,5 +1,8 @@
 mod gtk;
+mod output;
 mod selection;
+
+pub(crate) use output::OutputContext;
 
 use std::error::Error;
 use std::rc::Rc;

@@ -4,3 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Reusable Niri integration values for KShell components"
 license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

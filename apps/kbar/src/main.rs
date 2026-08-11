@@ -1,9 +1,9 @@
+mod app;
 mod calendar;
 mod clock;
-mod niri;
-mod system;
+mod services;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ui::run()
+    app::run()
 }

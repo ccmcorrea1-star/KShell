@@ -1,8 +1,15 @@
-//! Shared identifiers used by KShell surfaces and Niri configuration.
+//! Shared Niri IPC client and identifiers used by KShell surfaces.
 //!
 //! Keeping these values in a small crate prevents the native surfaces and the
 //! generated Niri fragment from drifting apart as more shell components are
 //! added.
+
+pub mod connection;
+pub mod protocol;
+pub mod state;
+
+pub use connection::{focus_workspace, focus_workspace_id, spawn_event_stream};
+pub use state::{Workspace, WorkspaceState};
 
 /// Namespace assigned to KShell launcher layer-shell surfaces.
 pub const LAUNCHER_NAMESPACE: &str = "my-shell-launcher";

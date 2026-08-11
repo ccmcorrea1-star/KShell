@@ -1,5 +1,5 @@
 use std::mem::MaybeUninit;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const WEEKDAYS: [&str; 7] = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const MONTHS: [&str; 12] = [
@@ -30,6 +30,14 @@ pub fn now() -> ClockText {
     local_parts(seconds as libc::time_t)
         .and_then(format_parts)
         .unwrap_or_else(fallback)
+}
+
+pub fn duration_until_next_minute(now: SystemTime) -> Duration {
+    let elapsed = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let seconds = 60 - elapsed.as_secs() % 60;
+    Duration::from_secs(seconds)
+        .checked_sub(Duration::from_nanos(u64::from(elapsed.subsec_nanos())))
+        .unwrap_or_else(|| Duration::from_secs(60))
 }
 
 fn local_parts(timestamp: libc::time_t) -> Option<LocalParts> {
@@ -74,7 +82,9 @@ fn fallback() -> ClockText {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_parts, ClockText, LocalParts};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use super::{duration_until_next_minute, format_parts, ClockText, LocalParts};
 
     #[test]
     fn formats_portuguese_date_and_time_like_the_mockup() {
@@ -103,5 +113,17 @@ mod tests {
             minute: 12,
         })
         .is_none());
+    }
+
+    #[test]
+    fn aligns_the_one_shot_timer_to_the_next_minute() {
+        assert_eq!(
+            duration_until_next_minute(UNIX_EPOCH + Duration::from_secs(60)),
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            duration_until_next_minute(UNIX_EPOCH + Duration::from_millis(59_500)),
+            Duration::from_millis(500)
+        );
     }
 }

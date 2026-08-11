@@ -11,6 +11,7 @@ use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 use crate::core::{desktop::DesktopEntry, search};
 use crate::ui::selection::{Direction, SelectionState};
+use crate::ui::OutputContext;
 use kshell_theme::tokens;
 
 const APPLICATION_ID: &str = "com.klaucher.Launcher";
@@ -95,6 +96,8 @@ fn build_launcher(
     window.set_keyboard_mode(KeyboardMode::Exclusive);
     window.set_exclusive_zone(0);
     window.set_namespace(Some(LAYER_NAMESPACE));
+    let output_context = OutputContext::resolve();
+    output_context.apply(&window);
     for edge in [Edge::Top, Edge::Right, Edge::Bottom, Edge::Left] {
         window.set_anchor(edge, true);
     }
@@ -111,7 +114,7 @@ fn build_launcher(
     root.set_child(Some(&backdrop_revealer));
     root.add_overlay(&surface);
 
-    let (panel_width, panel_height) = panel_size();
+    let (panel_width, panel_height) = panel_size(output_context.monitor.as_ref());
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 0);
     panel.add_css_class("launcher-panel");
     panel.set_width_request(panel_width);
@@ -409,14 +412,10 @@ fn set_application_icon(image: &gtk::Image, icon: Option<&str>) {
     }
 }
 
-fn panel_size() -> (i32, i32) {
-    let Some(display) = gdk::Display::default() else {
+fn panel_size(monitor: Option<&gdk::Monitor>) -> (i32, i32) {
+    let Some(monitor) = monitor else {
         return (tokens::PANEL_WIDTH, tokens::PANEL_HEIGHT);
     };
-    let Some(monitor) = display.monitors().item(0).and_downcast::<gdk::Monitor>() else {
-        return (tokens::PANEL_WIDTH, tokens::PANEL_HEIGHT);
-    };
-
     let geometry = monitor.geometry();
     (
         tokens::PANEL_WIDTH.min((geometry.width() - tokens::PANEL_MARGIN * 2).max(1)),

@@ -1,19 +1,17 @@
+//! Audio worker and PipeWire/WirePlumber backend.
+
 use std::collections::VecDeque;
-use std::fs;
-use std::io::Read;
-use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use super::command;
+use super::StatusUpdate;
 
 const AUDIO_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 const AUDIO_OUTPUT_REFRESH_INTERVAL: Duration = Duration::from_secs(4);
 const VOLUME_SYNC_SETTLE_DELAY: Duration = Duration::from_millis(32);
 const VOLUME_SYNC_RETRY_DELAY: Duration = Duration::from_millis(16);
-const STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
-const COMMAND_TIMEOUT: Duration = Duration::from_millis(500);
-const COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(5);
-const COMMAND_OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct VolumeStatus {
@@ -40,36 +38,10 @@ pub enum VolumeAction {
     Sync { token: u64, requested_percent: u8 },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct BatteryStatus {
-    pub percent: u8,
-    pub charging: bool,
-}
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct SystemStatus {
+pub struct AudioStatus {
     pub volume: VolumeStatus,
     pub volume_sync_token: Option<u64>,
-    pub network_connected: bool,
-    pub battery: Option<BatteryStatus>,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct AudioStatus {
-    volume: VolumeStatus,
-    volume_sync_token: Option<u64>,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct SlowSystemStatus {
-    network_connected: bool,
-    battery: Option<BatteryStatus>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum StatusUpdate {
-    Audio(AudioStatus),
-    SlowSystem(SlowSystemStatus),
 }
 
 /// Minimal boundary for the UI-facing audio worker.
@@ -77,7 +49,7 @@ enum StatusUpdate {
 /// The current implementation uses short-lived `wpctl` commands, but keeping
 /// reads and mutations behind this trait leaves room for a persistent
 /// PipeWire/WirePlumber client without changing the GTK side.
-trait AudioBackend: Clone + Send + Sync + 'static {
+pub trait AudioBackend: Clone + Send + Sync + 'static {
     fn set_volume(&self, percent: u8);
     fn adjust_volume(&self, step: i8);
     fn toggle_mute(&self);
@@ -87,7 +59,7 @@ trait AudioBackend: Clone + Send + Sync + 'static {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct WpctlBackend;
+pub struct WpctlBackend;
 
 impl AudioBackend for WpctlBackend {
     fn set_volume(&self, percent: u8) {
@@ -96,7 +68,7 @@ impl AudioBackend for WpctlBackend {
             "@DEFAULT_AUDIO_SINK@".to_owned(),
             format!("{}%", percent.min(100)),
         ];
-        let _ = run_controlled_command("wpctl", &args);
+        let _ = command::run_controlled("wpctl", &args);
     }
 
     fn adjust_volume(&self, step: i8) {
@@ -110,7 +82,7 @@ impl AudioBackend for WpctlBackend {
             "--limit".to_owned(),
             "1.0".to_owned(),
         ];
-        let _ = run_controlled_command("wpctl", &args);
+        let _ = command::run_controlled("wpctl", &args);
     }
 
     fn toggle_mute(&self) {
@@ -119,12 +91,12 @@ impl AudioBackend for WpctlBackend {
             "@DEFAULT_AUDIO_SINK@".to_owned(),
             "toggle".to_owned(),
         ];
-        let _ = run_controlled_command("wpctl", &args);
+        let _ = command::run_controlled("wpctl", &args);
     }
 
     fn set_default_output(&self, id: u32) {
         let args = vec!["set-default".to_owned(), id.to_string()];
-        let _ = run_controlled_command("wpctl", &args);
+        let _ = command::run_controlled("wpctl", &args);
     }
 
     fn read_volume_level(&self) -> Option<VolumeStatus> {
@@ -136,18 +108,7 @@ impl AudioBackend for WpctlBackend {
     }
 }
 
-pub fn spawn_status_worker(sender: Sender<SystemStatus>) -> Sender<VolumeAction> {
-    let (action_sender, action_receiver) = mpsc::channel();
-    let (update_sender, update_receiver) = mpsc::channel();
-
-    spawn_audio_worker(WpctlBackend, action_receiver, update_sender.clone());
-    spawn_system_worker(update_sender);
-    thread::spawn(move || aggregate_status_updates(update_receiver, sender));
-
-    action_sender
-}
-
-fn spawn_audio_worker<B: AudioBackend>(
+pub fn spawn_audio_worker<B: AudioBackend>(
     backend: B,
     action_receiver: Receiver<VolumeAction>,
     update_sender: Sender<StatusUpdate>,
@@ -196,35 +157,6 @@ fn spawn_audio_worker<B: AudioBackend>(
     });
 }
 
-fn spawn_system_worker(update_sender: Sender<StatusUpdate>) {
-    thread::spawn(move || {
-        let mut status = SlowSystemStatus {
-            network_connected: read_network(),
-            battery: read_battery(),
-        };
-        let mut last_sent = None;
-
-        if !send_slow_system_status(&update_sender, &status, &mut last_sent) {
-            return;
-        }
-
-        loop {
-            thread::sleep(STATUS_REFRESH_INTERVAL);
-            let next_status = SlowSystemStatus {
-                network_connected: read_network(),
-                battery: read_battery(),
-            };
-            if next_status == status {
-                continue;
-            }
-            status = next_status;
-            if !send_slow_system_status(&update_sender, &status, &mut last_sent) {
-                break;
-            }
-        }
-    });
-}
-
 fn send_audio_status(
     sender: &Sender<StatusUpdate>,
     status: &AudioStatus,
@@ -238,80 +170,6 @@ fn send_audio_status(
     }
     *last_sent = Some(status.clone());
     true
-}
-
-fn send_slow_system_status(
-    sender: &Sender<StatusUpdate>,
-    status: &SlowSystemStatus,
-    last_sent: &mut Option<SlowSystemStatus>,
-) -> bool {
-    if last_sent.as_ref() == Some(status) {
-        return true;
-    }
-    if sender
-        .send(StatusUpdate::SlowSystem(status.clone()))
-        .is_err()
-    {
-        return false;
-    }
-    *last_sent = Some(status.clone());
-    true
-}
-
-fn aggregate_status_updates(receiver: Receiver<StatusUpdate>, sender: Sender<SystemStatus>) {
-    let mut status = SystemStatus::default();
-    let mut has_audio = false;
-    let mut has_slow_system = false;
-    let mut last_sent = None;
-
-    while let Ok(first_update) = receiver.recv() {
-        let mut changed = merge_status_update(
-            &mut status,
-            first_update,
-            &mut has_audio,
-            &mut has_slow_system,
-        );
-
-        while let Ok(update) = receiver.try_recv() {
-            changed |=
-                merge_status_update(&mut status, update, &mut has_audio, &mut has_slow_system);
-        }
-
-        if changed && has_audio && last_sent.as_ref() != Some(&status) {
-            if sender.send(status.clone()).is_err() {
-                break;
-            }
-            last_sent = Some(status.clone());
-        }
-    }
-}
-
-fn merge_status_update(
-    status: &mut SystemStatus,
-    update: StatusUpdate,
-    has_audio: &mut bool,
-    has_slow_system: &mut bool,
-) -> bool {
-    match update {
-        StatusUpdate::Audio(audio) => {
-            let changed = !*has_audio
-                || status.volume != audio.volume
-                || status.volume_sync_token != audio.volume_sync_token;
-            status.volume = audio.volume;
-            status.volume_sync_token = audio.volume_sync_token;
-            *has_audio = true;
-            changed
-        }
-        StatusUpdate::SlowSystem(system) => {
-            let changed = !*has_slow_system
-                || status.network_connected != system.network_connected
-                || status.battery != system.battery;
-            status.network_connected = system.network_connected;
-            status.battery = system.battery;
-            *has_slow_system = true;
-            changed
-        }
-    }
 }
 
 fn receive_volume_action(
@@ -474,68 +332,12 @@ fn attach_output_devices(mut status: VolumeStatus, output: &str) -> VolumeStatus
 }
 
 fn read_volume_level() -> Option<VolumeStatus> {
-    let output = command_output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])?;
+    let output = command::output("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])?;
     parse_wpctl_volume(&output)
 }
 
 fn read_outputs() -> Option<Vec<OutputDevice>> {
-    command_output("wpctl", &["status"]).map(|output| parse_wpctl_outputs(&output))
-}
-
-fn spawn_command(program: &str, args: &[String], stdout: Stdio) -> Option<Child> {
-    Command::new(program)
-        .args(args)
-        .env("LC_ALL", "C")
-        .stdout(stdout)
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
-}
-
-fn wait_for_command(mut child: Child) -> bool {
-    let deadline = Instant::now() + COMMAND_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
-            Ok(None) if Instant::now() < deadline => thread::sleep(COMMAND_POLL_INTERVAL),
-            Ok(None) | Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return false;
-            }
-        }
-    }
-}
-
-fn run_controlled_command(program: &str, args: &[String]) -> bool {
-    let Some(child) = spawn_command(program, args, Stdio::null()) else {
-        return false;
-    };
-    wait_for_command(child)
-}
-
-fn command_output(program: &str, args: &[&str]) -> Option<String> {
-    let owned_args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
-    let mut child = spawn_command(program, &owned_args, Stdio::piped())?;
-    let Some(mut stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return None;
-    };
-
-    let (output_sender, output_receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let mut output = String::new();
-        let result = stdout.read_to_string(&mut output).map(|_| output);
-        let _ = output_sender.send(result);
-    });
-
-    let success = wait_for_command(child);
-    let output = output_receiver
-        .recv_timeout(COMMAND_OUTPUT_DRAIN_TIMEOUT)
-        .ok()?
-        .ok()?;
-    success.then_some(output)
+    command::output("wpctl", &["status"]).map(|output| parse_wpctl_outputs(&output))
 }
 
 fn parse_wpctl_volume(output: &str) -> Option<VolumeStatus> {
@@ -674,81 +476,15 @@ fn volume_step_argument(step: i8) -> Option<String> {
     ))
 }
 
-fn parse_network_state(output: &str) -> bool {
-    output.trim().to_ascii_lowercase().starts_with("connected")
-}
-
-fn read_network() -> bool {
-    if let Some(output) = command_output("nmcli", &["-t", "-f", "STATE", "general"]) {
-        return parse_network_state(&output);
-    }
-
-    command_output("ip", &["route", "show", "default"])
-        .is_some_and(|output| !output.trim().is_empty())
-}
-
-fn read_battery() -> Option<BatteryStatus> {
-    let entries = fs::read_dir("/sys/class/power_supply").ok()?;
-    let mut capacities = Vec::new();
-    let mut charging = false;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !fs::read_to_string(path.join("type"))
-            .map(|kind| kind.trim().eq_ignore_ascii_case("battery"))
-            .unwrap_or(false)
-        {
-            continue;
-        }
-
-        let Some(capacity) = fs::read_to_string(path.join("capacity"))
-            .ok()
-            .and_then(|value| parse_battery_capacity(&value))
-        else {
-            continue;
-        };
-        capacities.push(capacity);
-        charging |= fs::read_to_string(path.join("status"))
-            .map(|status| {
-                matches!(
-                    status.trim().to_ascii_lowercase().as_str(),
-                    "charging" | "full"
-                )
-            })
-            .unwrap_or(false);
-    }
-
-    if capacities.is_empty() {
-        return None;
-    }
-
-    let percent = capacities
-        .iter()
-        .map(|&value| u32::from(value))
-        .sum::<u32>()
-        / u32::try_from(capacities.len()).ok()?;
-    Some(BatteryStatus {
-        percent: u8::try_from(percent).unwrap_or(100),
-        charging,
-    })
-}
-
-fn parse_battery_capacity(value: &str) -> Option<u8> {
-    let capacity = value.trim().parse::<u16>().ok()?;
-    u8::try_from(capacity.min(100)).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
     use std::sync::mpsc;
-    use std::time::{Duration, Instant};
 
     use super::{
-        attach_output_devices, friendly_output_name, merge_status_update, parse_battery_capacity,
-        parse_network_state, parse_wpctl_outputs, parse_wpctl_volume, receive_volume_action,
-        refresh_status_after_action, run_controlled_command, AudioStatus, OutputDevice,
-        SlowSystemStatus, StatusUpdate, SystemStatus, VolumeAction, VolumeStatus, WpctlBackend,
+        attach_output_devices, friendly_output_name, parse_wpctl_outputs, parse_wpctl_volume,
+        receive_volume_action, refresh_status_after_action, AudioStatus, OutputDevice,
+        VolumeAction, VolumeStatus, WpctlBackend,
     };
 
     #[test]
@@ -945,58 +681,5 @@ mod tests {
 
         assert_eq!(status.volume.percent, Some(83));
         assert_eq!(status.volume_sync_token, None);
-    }
-
-    #[test]
-    fn identical_status_updates_are_not_reported_as_changes() {
-        let audio = AudioStatus::default();
-        let mut status = SystemStatus::default();
-        let mut has_audio = false;
-        let mut has_slow_system = false;
-
-        assert!(merge_status_update(
-            &mut status,
-            StatusUpdate::Audio(audio.clone()),
-            &mut has_audio,
-            &mut has_slow_system,
-        ));
-        assert!(!merge_status_update(
-            &mut status,
-            StatusUpdate::Audio(audio),
-            &mut has_audio,
-            &mut has_slow_system,
-        ));
-        assert!(merge_status_update(
-            &mut status,
-            StatusUpdate::SlowSystem(SlowSystemStatus::default()),
-            &mut has_audio,
-            &mut has_slow_system,
-        ));
-        assert!(!merge_status_update(
-            &mut status,
-            StatusUpdate::SlowSystem(SlowSystemStatus::default()),
-            &mut has_audio,
-            &mut has_slow_system,
-        ));
-    }
-
-    #[test]
-    fn controlled_command_timeout_returns_without_waiting_forever() {
-        let started = Instant::now();
-        assert!(!run_controlled_command("sleep", &["2".to_owned()]));
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn recognizes_network_state_without_showing_a_label() {
-        assert!(parse_network_state("connected (global)\n"));
-        assert!(!parse_network_state("disconnected\n"));
-    }
-
-    #[test]
-    fn clamps_battery_capacity_to_a_percentage() {
-        assert_eq!(parse_battery_capacity("87\n"), Some(87));
-        assert_eq!(parse_battery_capacity("120"), Some(100));
-        assert_eq!(parse_battery_capacity("unknown"), None);
     }
 }

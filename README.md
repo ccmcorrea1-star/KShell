@@ -153,6 +153,17 @@ session. Its layer-shell surface uses the `my-shell-bar` namespace and reserves
 the top exclusive zone when it starts. Ensure `kbar` is installed in `PATH`,
 for example with `cargo install --path apps/kbar`.
 
+The current application IDs (`com.klaucher.Bar` and `com.klaucher.Launcher`)
+and layer-shell namespaces (`my-shell-bar` and `my-shell-launcher`) are kept
+for compatibility with existing Niri rules and local configuration. A future
+rename must update the generated templates, compositor rules, and autostart
+configuration together.
+
+For an explicitly selected output, set `KSHELL_OUTPUT` to its Wayland connector
+name (for example `DP-1`) before launching Kbar or Klauncher. Without it, Kbar
+lets the compositor choose the surface output and falls back to the focused
+workspace; full multi-bar orchestration remains outside this refactor.
+
 ## Development
 
 Useful commands:
