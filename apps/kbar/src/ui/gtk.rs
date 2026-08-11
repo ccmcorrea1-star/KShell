@@ -57,10 +57,6 @@ fn build_bar(application: &gtk::Application) {
     install_css();
 
     let (workspace_box, workspace_buttons) = build_workspaces();
-    let (status_sender, status_receiver) = mpsc::channel();
-    let volume_actions = system::spawn_status_worker(status_sender);
-    let status_widgets = Rc::new(build_status(volume_actions));
-
     let window = gtk::ApplicationWindow::new(application);
     window.add_css_class("kbar-window");
     window.set_decorated(false);
@@ -75,6 +71,10 @@ fn build_bar(application: &gtk::Application) {
     window.set_margin(Edge::Top, tokens::BAR_MARGIN);
     window.set_margin(Edge::Left, tokens::BAR_MARGIN);
     window.set_margin(Edge::Right, tokens::BAR_MARGIN);
+
+    let (status_sender, status_receiver) = mpsc::channel();
+    let volume_actions = system::spawn_status_worker(status_sender);
+    let status_widgets = Rc::new(build_status(&window, volume_actions));
 
     let (clock_box, clock_date, clock_time) = build_clock(&window);
 
@@ -388,13 +388,16 @@ struct OutputMenuState {
     outputs: Vec<system::OutputDevice>,
 }
 
-fn build_status(action_sender: mpsc::Sender<system::VolumeAction>) -> StatusWidgets {
+fn build_status(
+    window: &gtk::ApplicationWindow,
+    action_sender: mpsc::Sender<system::VolumeAction>,
+) -> StatusWidgets {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, tokens::STATUS_GAP);
     container.add_css_class("kbar-status");
     container.set_valign(gtk::Align::Center);
     container.set_baseline_position(gtk::BaselinePosition::Center);
 
-    let (volume_item, volume) = build_volume(action_sender);
+    let (volume_item, volume) = build_volume(window, action_sender);
 
     let network_icon = StatusIcon::new(IconKind::Network);
     let network_item = status_item(&network_icon, None);
@@ -422,7 +425,10 @@ fn build_status(action_sender: mpsc::Sender<system::VolumeAction>) -> StatusWidg
     }
 }
 
-fn build_volume(action_sender: mpsc::Sender<system::VolumeAction>) -> (gtk::Box, VolumeWidgets) {
+fn build_volume(
+    window: &gtk::ApplicationWindow,
+    action_sender: mpsc::Sender<system::VolumeAction>,
+) -> (gtk::Box, VolumeWidgets) {
     let volume_icon = StatusIcon::new(IconKind::Volume);
     let volume_label = gtk::Label::new(Some("—%"));
     volume_label.add_css_class("kbar-status-label");
@@ -450,6 +456,11 @@ fn build_volume(action_sender: mpsc::Sender<system::VolumeAction>) -> (gtk::Box,
         (tokens::BAR_HEIGHT - tokens::STATUS_ICON_SIZE) / 2 + tokens::SPACE_2,
     );
     popover.set_parent(&volume_item);
+
+    let window_for_close = window.clone();
+    popover.connect_closed(move |_| {
+        window_for_close.set_keyboard_mode(KeyboardMode::None);
+    });
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, tokens::SPACE_3);
     content.add_css_class("kbar-volume-content");
@@ -593,8 +604,10 @@ fn build_volume(action_sender: mpsc::Sender<system::VolumeAction>) -> (gtk::Box,
     left_click.set_button(gdk::BUTTON_PRIMARY);
     left_click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let popover_for_click = popover.clone();
+    let window_for_click = window.clone();
     left_click.connect_pressed(move |_, press_count, _, _| {
         if press_count == 1 {
+            window_for_click.set_keyboard_mode(KeyboardMode::OnDemand);
             popover_for_click.popup();
         }
     });
