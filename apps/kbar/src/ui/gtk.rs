@@ -67,11 +67,14 @@ fn build_bar(application: &gtk::Application) {
     window.init_layer_shell();
     window.set_layer(Layer::Top);
     window.set_keyboard_mode(KeyboardMode::None);
-    window.set_exclusive_zone(tokens::BAR_HEIGHT);
+    window.set_exclusive_zone(tokens::BAR_HEIGHT + tokens::BAR_MARGIN);
     window.set_namespace(Some(kshell_niri::BAR_NAMESPACE));
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Right, true);
+    window.set_margin(Edge::Top, tokens::BAR_MARGIN);
+    window.set_margin(Edge::Left, tokens::BAR_MARGIN);
+    window.set_margin(Edge::Right, tokens::BAR_MARGIN);
 
     let (clock_box, clock_date, clock_time) = build_clock(&window);
 
@@ -439,6 +442,13 @@ fn build_volume(action_sender: mpsc::Sender<system::VolumeAction>) -> (gtk::Box,
     popover.set_autohide(true);
     popover.set_has_arrow(false);
     popover.set_position(gtk::PositionType::Bottom);
+    // The volume item is centered inside the 32px bar, so Bottom would place
+    // the popover below the item but still inside the bar. Move it past the
+    // remaining half-height of the bar, plus a quiet 8px separation.
+    popover.set_offset(
+        0,
+        (tokens::BAR_HEIGHT - tokens::STATUS_ICON_SIZE) / 2 + tokens::SPACE_2,
+    );
     popover.set_parent(&volume_item);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, tokens::SPACE_3);

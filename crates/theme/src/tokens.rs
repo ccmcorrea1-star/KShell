@@ -70,6 +70,7 @@ pub const PANEL_INSET: i32 = 14;
 pub const LIST_INSET: i32 = 7;
 pub const ICON_NAME_GAP: i32 = 10;
 pub const BAR_HEIGHT: i32 = SPACE_4 * 2;
+pub const BAR_MARGIN: i32 = SPACE_2;
 pub const BAR_CONTENT_PADDING: i32 = 6;
 pub const WORKSPACE_SIZE: i32 = SPACE_3 * 2;
 pub const WORKSPACE_GAP: i32 = RADIUS_PANEL;

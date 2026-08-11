@@ -169,6 +169,10 @@ button.kbar-workspace.is-active {
     padding: 0;
 }
 
+.kbar-volume-popover {
+    margin-right: 8px;
+}
+
 .kbar-volume-content {
     min-width: 240px;
     background-color: transparent;
