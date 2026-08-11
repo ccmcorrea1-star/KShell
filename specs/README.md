@@ -1,16 +1,18 @@
 # Especificações de funcionalidades
 
-Cada funcionalidade usa a mesma estrutura SDD de três arquivos:
+`spec.md` é o único arquivo obrigatório: registra comportamento, evidências,
+critérios de aceite e limites da funcionalidade. As specs atuais são baselines
+retrospectivas e não autorizam uma nova implementação.
 
-- `spec.md` — comportamento, requisitos, classificação das evidências e critérios de aceite.
-- `plan.md` — abordagem técnica, limites existentes, impacto e abordagem de validação.
-- `tasks.md` — tarefas pequenas e executáveis, com o trabalho da baseline atual marcado como concluído e decisões não resolvidas mantidas explícitas.
+Use arquivos auxiliares somente quando a mudança exigir:
 
-As especificações iniciais são baselines retrospectivas de funcionalidades já
-presentes no repositório. Elas não autorizam uma nova implementação. Um
-requisito confirmado pelo código é marcado como **Confirmado**; um limite
-inferido da organização atual é marcado como **Inferido**; um comportamento
-que exige uma decisão de produto ou arquitetura é marcado como **TBD**.
+- `plan.md` — abordagem para uma mudança ativa que atravesse limites, introduza
+  uma decisão técnica ou tenha validação não trivial.
+- `tasks.md` — tarefas verificáveis para trabalho ativo com várias etapas.
+
+Não crie esses arquivos para completar um template ou repetir a spec. Requisitos
+confirmados pelo código são **Confirmados**, limites inferidos são **Inferidos**
+e decisões de produto/arquitetura ainda abertas são **TBD**.
 
 | ID | Funcionalidade | Status |
 | --- | --- | --- |

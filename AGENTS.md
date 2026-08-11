@@ -3,54 +3,48 @@
 KShell é um workspace Cargo em Rust 2021 para um desktop shell Wayland/Niri
 construído com GTK4 e `gtk4-layer-shell`.
 
-## Regras estáveis do repositório
+## Fontes de verdade e fluxo SDD
 
-- Trate `specs/NNN-feature/spec.md` como a baseline de comportamento de uma
-  funcionalidade existente. Atualize `plan.md` e `tasks.md` quando uma mudança
-  solicitada afetar essa funcionalidade.
-- Mantenha os princípios globais em `.specify/memory/constitution.md`, os
-  fatos arquiteturais em `docs/architecture/` e as decisões permanentes em
-  `docs/decisions/`. Não copie o mesmo requisito em vários documentos.
-- Preserve o comportamento visível para o usuário e a compatibilidade atuais,
-  salvo quando uma spec de funcionalidade alterar isso explicitamente. Não
-  implemente comportamentos marcados como `TBD`.
-- Toda documentação futura do fluxo Spec-Driven deve ser escrita em português
-  brasileiro (pt-BR), sem criar documentação bilíngue. Mantenha em inglês os
-  identificadores técnicos, comandos, APIs, bibliotecas, classes, funções,
-  tipos e variáveis.
-- Use Rust estável, indentação de quatro espaços, `rustfmt`, `snake_case` para
-  funções/variáveis/módulos, `UpperCamelCase` para tipos e
-  `SCREAMING_SNAKE_CASE` para constantes.
-- Mantenha a lógica das aplicações separada pelos limites de módulos
-  existentes: `apps/klauncher` é responsável pelo core/UI do launcher,
-  `apps/kbar` pelo UI/services da barra, `crates/niri` pela integração Niri
-  reutilizável, `crates/theme` por tokens/templates/rendering compartilhados e
-  `tools/theme-gen` pela geração.
-- Mantenha os testes unitários junto da implementação que cobrem. Use
-  `tests/` apenas para testes que realmente atravessem limites de pacotes; não
-  mova testes apenas para atender ao layout SDD.
-- Trate arquivos `.desktop`, variáveis de ambiente, saída de comandos e
-  caminhos como não confiáveis. Preserve o modelo de launch sem shell, os
-  limites dos argumentos e o comportamento de subprocessos com limites
-  explícitos. Não registre argumentos de comandos ou caminhos pessoais sem
-  necessidade.
-- Artefatos CSS/KDL/mockup gerados devem ser alterados pelo theme generator
-  quando seus templates ou tokens mudarem; não edite outputs gerados
-  manualmente.
+- `specs/NNN-feature/spec.md` é o contrato de comportamento e a baseline
+  retrospectiva da funcionalidade. Atualize-o quando o comportamento mudar.
+- `plan.md` é opcional: crie-o somente para uma mudança ativa que atravesse
+  pacotes, introduza uma decisão técnica ou exija uma estratégia de validação
+  explícita. O plano descreve o delta; não repete a spec.
+- `tasks.md` é opcional: use-o quando houver várias tarefas verificáveis em
+  andamento. Não crie planos ou listas vazias para baselines já implementadas.
+- A constituição define princípios, `docs/architecture/` registra fatos
+  estruturais, `docs/decisions/` registra decisões permanentes e a spec é dona
+  do comportamento da funcionalidade. Aponte para a fonte de verdade em vez de
+  copiar o mesmo requisito.
+- Preserve o comportamento visível e a compatibilidade atuais, salvo mudança
+  explícita na spec. Não implemente comportamentos marcados como `TBD`.
+- Documentação futura do fluxo SDD deve ser escrita em português brasileiro
+  (pt-BR). Identificadores técnicos, comandos, APIs, bibliotecas, classes,
+  funções, tipos e variáveis permanecem em inglês.
+
+## Limites de implementação
+
+- Use Rust estável, quatro espaços, `rustfmt`, `snake_case`, `UpperCamelCase`
+  para tipos e `SCREAMING_SNAKE_CASE` para constantes.
+- Preserve os limites existentes: `apps/klauncher` para core/UI do launcher,
+  `apps/kbar` para UI/services da barra, `crates/niri` para a integração Niri,
+  `crates/theme` para tokens/templates/rendering e `tools/theme-gen` para a
+  geração.
+- Mantenha testes unitários junto da implementação. Use `tests/` somente para
+  testes que atravessem limites de pacotes.
+- Trate arquivos `.desktop`, ambiente, caminhos e saída de comandos como não
+  confiáveis. Preserve launch sem shell, limites de argumentos e subprocessos
+  com limites explícitos; não registre dados pessoais sem necessidade.
+- Altere CSS/KDL/mockups gerados pelo theme generator quando templates ou
+  tokens mudarem; não edite outputs gerados manualmente.
 
 ## Comandos do projeto
 
 Execute os comandos a partir da raiz do repositório:
 
 ```sh
-cargo fmt --all -- --check
-cargo check --workspace
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo build --workspace
 cargo build --release -p klauncher   # ou: -p kbar
 cargo run -p klauncher              # ou: -p kbar
-cargo run -p kshell-theme-gen -- --check
 cargo run -p kshell-theme-gen -- --write
 ```
 
@@ -60,10 +54,9 @@ aplicações, instale o binário usado pelo Niri com `cargo install --path apps/
 ou `cargo install --path apps/kbar`; o Niri inicia os binários por meio do
 `PATH`.
 
-## Validação obrigatória
+## Validação
 
-Antes de entregar uma mudança de código ou de artefatos gerados, execute as
-verificações de formatação, testes do workspace, lint, build e tema gerado:
+Antes de entregar uma mudança de código ou de artefatos gerados, execute:
 
 ```sh
 cargo fmt --all -- --check

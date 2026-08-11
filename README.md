@@ -28,7 +28,8 @@ inferred from the current module boundaries, and decisions that are still
 - `tools/theme-gen` — command-line theme generator.
 - `contrib/niri` — generated optional Niri configuration fragments.
 - `mockups` — browser mockups and generated visual reference assets.
-- `specs` — feature specifications, technical plans, and executable task lists.
+- `specs` — feature specifications, with optional plans and task lists for
+  active changes that need them.
 - `docs/architecture` — global architecture and design-system documentation.
 - `docs/decisions` — accepted architectural decision records.
 

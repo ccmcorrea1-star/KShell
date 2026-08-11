@@ -1,24 +1,24 @@
 # Constituição do KShell
 
-Versão: 1.0
+Versão: 1.1
 
-Esta constituição define as regras aplicáveis a todas as funcionalidades. Ela
-descreve os princípios de qualidade e compatibilidade do projeto; os comandos
-exatos e o fluxo de trabalho dos agentes ficam em `AGENTS.md`.
+Esta constituição define os princípios de qualidade e compatibilidade do
+projeto. Os comandos e o fluxo operacional dos agentes ficam em `AGENTS.md`.
 
 ## Princípio 1 — Especificar o comportamento antes de alterá-lo
 
-Toda mudança de funcionalidade deve ter um diretório correspondente em
-`specs/NNN-feature/`. `spec.md` é o contrato de comportamento, `plan.md`
-explica a abordagem técnica e o impacto arquitetural, e `tasks.md` divide o
-trabalho em ações pequenas e verificáveis. Funcionalidades existentes podem
-ser documentadas retrospectivamente, mas o comportamento inferido deve ser
-marcado como inferido e escolhas não resolvidas devem ser marcadas como `TBD`.
+Toda mudança de funcionalidade deve ter uma spec em
+`specs/NNN-feature/spec.md`. Funcionalidades existentes podem ser documentadas
+retrospectivamente; evidência inferida deve ser marcada como **Inferido** e
+decisões não resolvidas como **TBD**.
 
-Toda documentação futura do fluxo Spec-Driven deve ser escrita em português
-brasileiro (pt-BR), sem criar documentação bilíngue. Nomes de arquivos e
-identificadores técnicos, comandos, APIs, bibliotecas, classes, funções, tipos
-e variáveis permanecem em inglês.
+`plan.md` e `tasks.md` são auxiliares opcionais. Use-os apenas quando a mudança
+ativa tiver complexidade suficiente para se beneficiar deles; não crie esses
+arquivos para preencher um template de baseline.
+
+Documentação futura do fluxo SDD deve ser escrita em português brasileiro
+(pt-BR). Identificadores técnicos, comandos, APIs, bibliotecas, classes,
+funções, tipos e variáveis permanecem em inglês.
 
 ## Princípio 2 — Preservar a compatibilidade por padrão
 
@@ -64,17 +64,17 @@ compositor, layer-shell, GTK e comportamento de serviços externos em execução
 Os critérios de aceite de uma spec devem identificar qual evidência é
 automatizada e qual exige uma sessão.
 
-## Princípio 7 — Manter a mudança rastreável
+## Princípio 7 — Manter a mudança rastreável sem duplicação
 
 Documentos de funcionalidade são responsáveis pelo comportamento da
 funcionalidade. `docs/architecture/` é responsável pela estrutura e pelas
 restrições globais. `docs/decisions/` registra decisões permanentes importantes
-com contexto e consequências. Não duplique um requisito entre essas camadas;
-aponte para o documento de origem.
+com contexto e consequências. Cada fato deve ter uma fonte de verdade; os
+demais documentos devem referenciá-la em vez de repetir o requisito.
 
 ## Governança
 
 Esta constituição é a baseline global para futuras specs e mudanças de código.
-Uma exceção proposta deve ser documentada no plan da funcionalidade afetada e,
-quando permanente, em um ADR. A exceção deve explicar seu impacto em
-compatibilidade, segurança e validação.
+Uma exceção proposta deve ser documentada na spec afetada e, quando a mudança
+for complexa, no `plan.md` opcional; quando permanente, deve receber um ADR. A
+exceção deve explicar seu impacto em compatibilidade, segurança e validação.
