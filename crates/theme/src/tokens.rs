@@ -138,12 +138,23 @@ pub fn render_fastfetch_theme() -> String {
 }
 
 pub fn render_cava_config(config: &str) -> Option<String> {
-    const BEGIN: &str = "# BEGIN klauncher-theme";
-    const END: &str = "# END klauncher-theme";
+    const BEGIN: &str = "# BEGIN kshell-theme";
+    const END: &str = "# END kshell-theme";
+    const LEGACY_BEGIN: &str = "# BEGIN klauncher-theme";
+    const LEGACY_END: &str = "# END klauncher-theme";
 
-    let theme = render_cava_ini();
-    if let Some(start) = config.find(BEGIN) {
-        let end = config[start..].find(END)? + start + END.len();
+    let marker = config
+        .find(BEGIN)
+        .map(|start| (start, END))
+        .or_else(|| config.find(LEGACY_BEGIN).map(|start| (start, LEGACY_END)));
+    if let Some((start, end_marker)) = marker {
+        let theme = render_cava_ini();
+        let theme = if end_marker == LEGACY_END {
+            theme.replace(BEGIN, LEGACY_BEGIN).replace(END, LEGACY_END)
+        } else {
+            theme
+        };
+        let end = config[start..].find(end_marker)? + start + end_marker.len();
         let suffix_start = skip_line_ending(config, end);
         let mut rendered = String::with_capacity(config.len());
         rendered.push_str(&config[..start]);
@@ -152,6 +163,7 @@ pub fn render_cava_config(config: &str) -> Option<String> {
         return Some(rendered);
     }
 
+    let theme = render_cava_ini();
     let (section_start, section_end) = ini_section_bounds(config, "[color]")?;
     let section = &config[section_start..section_end];
     let mut replacement = theme;
@@ -1046,6 +1058,17 @@ mod tests {
         assert!(!rendered.contains("background = '#000000'"));
         assert!(!rendered.contains("gradient_color_1 = '#ffffff'"));
         assert_eq!(rendered.matches("[color]").count(), 1);
+        assert_eq!(render_cava_config(&rendered), Some(rendered.clone()));
+    }
+
+    #[test]
+    fn cava_theme_preserves_the_legacy_klauncher_marker() {
+        let config = "[general]\n# BEGIN klauncher-theme\n[color]\nbackground = '#000000'\n# END klauncher-theme\n\n[smoothing]\nnoise_reduction = 77\n";
+        let rendered = render_cava_config(config).expect("legacy Cava marker");
+
+        assert!(rendered.contains("# BEGIN klauncher-theme"));
+        assert!(rendered.contains("# END klauncher-theme"));
+        assert!(rendered.contains("noise_reduction = 77"));
         assert_eq!(render_cava_config(&rendered), Some(rendered.clone()));
     }
 

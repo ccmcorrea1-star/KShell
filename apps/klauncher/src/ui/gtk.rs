@@ -14,7 +14,7 @@ use crate::ui::selection::{Direction, SelectionState};
 use crate::ui::OutputContext;
 use kshell_theme::tokens;
 
-const APPLICATION_ID: &str = "com.klaucher.Launcher";
+const APPLICATION_ID: &str = "io.github.ccmcorrea1.kshell.Launcher";
 const LAYER_NAMESPACE: &str = kshell_niri::LAUNCHER_NAMESPACE;
 const MAX_EMPTY_QUERY_CHARS: usize = 32;
 const MAX_EMPTY_MESSAGE_WIDTH_CHARS: i32 = 60;

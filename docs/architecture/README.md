@@ -6,8 +6,8 @@ registros permanentes de decisões.
 
 - [Visão geral](overview.md) — limites de pacotes, fluxos de runtime,
   interfaces externas e restrições arquiteturais.
-- [Sistema de design](design-system.md) — tokens visuais, templates e regras de
-  consumidores migrados do antigo `docs/DESIGN.md`.
+- [Sistema de design](design-system.md) — tokens visuais, templates e regras
+  dos consumidores visuais compartilhados.
 
 Use os [ADRs](../decisions/) para uma decisão que precise permanecer estável
 mesmo que a implementação seja reorganizada depois.

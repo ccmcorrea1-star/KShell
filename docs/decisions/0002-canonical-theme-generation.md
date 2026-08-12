@@ -27,6 +27,9 @@ configuração não relacionados.
   outputs gerados.
 - Arquivos CSS/KDL/mockup gerados são outputs, não fontes independentes de
   verdade.
+- O bloco novo gerado do Cava usa o marcador `kshell-theme`; o renderer ainda
+  reconhece e preserva o marcador `klauncher-theme` ao atualizar configurações
+  existentes.
 - Configurações não relacionadas do usuário em terminal, Cava ou Fastfetch
   continuam sob responsabilidade dessas configurações.
 - O generator atualmente escreve diretamente nos arquivos descobertos; writes

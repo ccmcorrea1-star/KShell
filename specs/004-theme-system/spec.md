@@ -58,10 +58,12 @@ transparência.
 ### THEME-4 — Preservar a estrutura específica de cada consumidor
 
 Atualizações de Cava DEVEM substituir somente a seção `[color]` ativa ou o
-bloco de tema gerenciado existente. Atualizações de Fastfetch DEVEM substituir
-somente valores de cor reconhecidos de logo e módulos. Arquivos de tema de
-terminal DEVEM receber os valores de superfície e ANSI compartilhados sem
-assumir a propriedade do comportamento do terminal.
+bloco de tema gerenciado existente. O bloco gerenciado novo DEVE usar o
+marcador `kshell-theme`, e o renderer DEVE reconhecer e preservar o marcador
+`klauncher-theme` ao atualizar configurações Cava existentes. Atualizações de
+Fastfetch DEVEM substituir somente valores de cor reconhecidos de logo e
+módulos. Arquivos de tema de terminal DEVEM receber os valores de superfície e
+ANSI compartilhados sem assumir a propriedade do comportamento do terminal.
 
 ### THEME-5 — Verificar o comportamento de rendering
 

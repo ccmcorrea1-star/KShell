@@ -58,15 +58,19 @@ preservar o request existente por índice one-based e o comportamento no-op para
 
 Requests de foco DEVEM ser enviados diretamente ao socket Niri, sem shell.
 
-### NIRI-5 — Preservar identificadores de compatibilidade do compositor
+### NIRI-5 — Separar IDs GTK dos identificadores de compatibilidade do compositor
 
-Os IDs atuais das aplicações, namespaces layer-shell, nomes de commands e o
-binding `Mod+Space` DEVEM permanecer sincronizados entre consumidores nativos e
-templates gerados. Os valores Niri compartilhados ficam centralizados em
-`crates/niri`; os IDs das aplicações permanecem em seus módulos GTK atuais:
+Os IDs das aplicações GTK DEVEM usar o namespace do KShell e permanecer
+definidos nos módulos das aplicações:
 
-- ID da aplicação launcher: `com.klaucher.Launcher`;
-- ID da aplicação bar: `com.klaucher.Bar`;
+- ID da aplicação launcher: `io.github.ccmcorrea1.kshell.Launcher`;
+- ID da aplicação bar: `io.github.ccmcorrea1.kshell.Bar`.
+
+Esses IDs não são referenciados pelos fragments Niri. Os identificadores que
+formam o contrato de compatibilidade do compositor DEVEM permanecer
+sincronizados entre consumidores nativos e templates gerados. Os valores Niri
+compartilhados ficam centralizados em `crates/niri`:
+
 - namespace do launcher: `my-shell-launcher`;
 - namespace da bar: `my-shell-bar`;
 - command da bar: `kbar`;
@@ -86,7 +90,7 @@ múltiplas saídas fica fora desta funcionalidade.
 | AC-2 | Snapshots, ativação, urgência, seleção por output focado e IDs de workspace permanecem conscientes da saída. | Testes unitários em `state.rs` e `apps/kbar/src/ui/workspaces.rs`. |
 | AC-3 | Conexões ausentes/fechadas usam backoff, limpam estado obsoleto e param quando o receiver é fechado. | Testes unitários em `connection.rs`; verificação de stream em uma sessão Niri. |
 | AC-4 | Requests de foco preservam semântica de IPC direto e fallback por índice/ID. | Testes de protocol/connection e verificação manual de clique em workspace. |
-| AC-5 | Superfícies nativas e KDL gerado usam os mesmos identificadores de compatibilidade e as mesmas regras atuais. | Testes de rendering de tema, verificação de tema gerado e verificação manual da configuração Niri. |
+| AC-5 | Superfícies nativas e KDL gerado usam os mesmos identificadores Niri de compatibilidade e as mesmas regras atuais, enquanto as aplicações GTK usam IDs no namespace KShell. | Testes de rendering de tema, inspeção dos IDs nos módulos GTK, verificação de tema gerado e verificação manual da configuração Niri. |
 
 ## Fora do escopo desta baseline
 

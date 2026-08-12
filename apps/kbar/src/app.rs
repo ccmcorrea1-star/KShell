@@ -17,7 +17,7 @@ use crate::ui::bar::BarUi;
 use crate::ui::popover::PopoverCoordinator;
 use kshell_theme::tokens;
 
-const APPLICATION_ID: &str = "com.klaucher.Bar";
+const APPLICATION_ID: &str = "io.github.ccmcorrea1.kshell.Bar";
 const STYLE: &str = include_str!("ui/style.css");
 
 #[derive(Clone, Debug)]

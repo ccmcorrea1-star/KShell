@@ -110,9 +110,11 @@ include "/path/to/kshell/contrib/niri/klauncher.kdl"
 
 `kbar.kdl` starts Kbar with `spawn-at-startup`. `klauncher.kdl` keeps the
 existing `Mod+Space` binding, launcher blur rule, and quiet visual defaults.
-The current application IDs and layer-shell namespaces are compatibility
-identifiers; a rename requires a coordinated update of generated templates
-and compositor rules.
+The GTK application IDs use the KShell namespace:
+`io.github.ccmcorrea1.kshell.Launcher` and
+`io.github.ccmcorrea1.kshell.Bar`. The layer-shell namespaces remain
+`my-shell-launcher` and `my-shell-bar` because existing Niri rules can match
+them; changing those namespaces requires a coordinated compositor migration.
 
 Kbar reserves the top exclusive zone, displays five visual workspace slots,
 and receives workspace state from `$NIRI_SOCKET`. Its clock is updated on the
@@ -158,4 +160,4 @@ define the SDD and validation rules for future changes.
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

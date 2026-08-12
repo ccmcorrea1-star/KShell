@@ -79,11 +79,13 @@ O terceiro fluxo é **Confirmado** na implementação atual. O comportamento
   determinístico, ranking, transições de estado e parsing de comandos vivem em
   módulos não-UI e são testados ali; o comportamento Wayland/GTK continua
   sendo uma preocupação de integração manual.
-- **Identificadores Niri são dados de compatibilidade — Confirmado.**
-  Namespaces compartilhados, nomes de commands e binding padrão vêm de
-  `crates/niri`; os IDs das aplicações GTK permanecem nos módulos das
-  aplicações. Os valores Niri são compartilhados com os fragments gerados.
-  Consulte o [ADR-0003](../decisions/0003-niri-compatibility-identifiers.md).
+- **IDs GTK e identificadores Niri são limites distintos — Confirmado.** Os
+  IDs das aplicações GTK usam o namespace `io.github.ccmcorrea1.kshell` e são
+  definidos nos módulos das aplicações. Namespaces layer-shell, nomes de
+  commands e binding padrão vêm de `crates/niri`; esses valores Niri são
+  compartilhados com os fragments gerados e preservam os namespaces legados
+  usados por regras existentes. Consulte o
+  [ADR-0003](../decisions/0003-niri-compatibility-identifiers.md).
 - **Falhas externas são tratadas de forma best effort — Confirmado.**
   Diretórios ausentes, comandos indisponíveis, baterias ausentes, sockets Niri
   desconectados e displays sem layer-shell suportado não exigem uma nova
