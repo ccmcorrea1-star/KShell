@@ -8,8 +8,11 @@ repositório atual.
 
 ## Limite do sistema
 
-KShell é um workspace Cargo que contém duas superfícies nativas GTK4/layer-
-shell, dois crates reutilizáveis e uma ferramenta de geração. As superfícies
+KShell é um workspace Cargo que contém duas aplicações nativas GTK4/layer-
+shell, dois crates reutilizáveis e uma ferramenta de geração. Cada aplicação
+pode possuir mais de uma surface Wayland; a baseline atual possui a surface do
+launcher e a surface principal da barra, enquanto a funcionalidade 005 aprova
+uma surface auxiliar de Volume ainda não implementada. As superfícies
 executam em uma sessão Wayland; Niri, dados de aplicações XDG,
 PipeWire/WirePlumber, NetworkManager e sysfs de power-supply do Linux são
 interfaces externas.
@@ -17,7 +20,7 @@ interfaces externas.
 | Pacote ou área | Responsabilidade | Evidência |
 | --- | --- | --- |
 | `apps/klauncher` | Descobrir e fazer parsing de entries `.desktop`, ordenar resultados, renderizar o launcher e iniciar o comando selecionado | **Confirmado** por `core/`, `ui/` e `main.rs` |
-| `apps/kbar` | Compor a barra superior e os popovers; fazer polling de serviços do sistema; encaminhar atualizações de workers para o GTK | **Confirmado** por `app.rs`, `services/` e `ui/` |
+| `apps/kbar` | Compor a barra superior e seus overlays/painéis; fazer polling de serviços do sistema; encaminhar atualizações de workers para o GTK | **Confirmado** por `app.rs`, `services/` e `ui/`; a baseline usa popovers e a surface independente de Volume é o delta aprovado da [005](../../specs/005-volume-popup/spec.md) |
 | `crates/niri` | Codificar/decodificar o subset JSON Niri suportado, manter estado de workspaces, reconectar o event stream e expor identificadores de compatibilidade | **Confirmado** por `protocol.rs`, `state.rs`, `connection.rs` e `lib.rs` |
 | `crates/theme` | Manter tokens visuais, templates incorporados, descoberta de arquivos gerados e rendering seguro específico por consumidor | **Confirmado** por `tokens.rs` e pelos templates |
 | `tools/theme-gen` | Expor `--write` e `--check` para o renderer de tema | **Confirmado** por `main.rs` |
@@ -50,7 +53,21 @@ superfície Wayland.
 3. Workers de áudio e de sistema lento leem suas fontes externas em
    intervalos limitados e enviam somente atualizações alteradas.
 4. O contexto principal do GTK recebe essas atualizações e atualiza workspaces,
-   clock, volume, rede, bateria e popovers.
+   clock, volume, rede, bateria e overlays da Kbar. Na baseline, Calendar e
+   Volume são popovers; a [funcionalidade 005](../../specs/005-volume-popup/spec.md)
+   migra o Volume para uma surface própria sem alterar o backend de áudio.
+
+### Painéis e surfaces auxiliares da Kbar
+
+- A barra principal mantém sua surface layer-shell superior, exclusive zone e
+  keyboard mode próprios.
+- Calendar continua sendo um `GtkPopover` ancorado à janela principal nesta
+  etapa.
+- A funcionalidade 005 aprova uma `gtk::ApplicationWindow` layer-shell própria
+  para Volume, na mesma aplicação GTK, sem exclusive zone e com lifecycle,
+  foco, teclado e posicionamento independentes. Essa mudança ainda está em
+  implementação; os detalhes permanentes estão no
+  [ADR-0004](../decisions/0004-volume-panel-surface.md).
 
 ### Geração de tema
 
@@ -79,6 +96,11 @@ O terceiro fluxo é **Confirmado** na implementação atual. O comportamento
   determinístico, ranking, transições de estado e parsing de comandos vivem em
   módulos não-UI e são testados ali; o comportamento Wayland/GTK continua
   sendo uma preocupação de integração manual.
+- **Surfaces auxiliares mantêm ownership explícito — Aprovado para 005.** Um
+  painel que exige foco, teclado, output, camada ou lifecycle próprios pode
+  usar uma surface layer-shell independente; isso não cria um framework global
+  nem exige migrar todos os popups. Volume e Calendar continuam owners
+  distintos até uma mudança explícita de spec.
 - **IDs GTK e identificadores Niri são limites distintos — Confirmado.** Os
   IDs das aplicações GTK usam o namespace `io.github.ccmcorrea1.kshell` e são
   definidos nos módulos das aplicações. Namespaces layer-shell, nomes de

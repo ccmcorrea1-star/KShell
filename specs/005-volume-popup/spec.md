@@ -1,8 +1,9 @@
-# Funcionalidade 005: popup de volume estável da Kbar
+# Funcionalidade 005: painel de volume independente e estável da Kbar
 
-Status: proposta de mudança. Esta spec define o comportamento desejado para o
-popup de volume sem autorizar, por si só, a troca do backend de áudio ou uma
-alteração ampla da arquitetura da Kbar.
+Status: aprovada para implementação. Esta spec define o comportamento desejado
+para o painel de volume e o delta de surface registrado no
+[ADR-0004](../../docs/decisions/0004-volume-panel-surface.md). Ela não autoriza
+a troca do backend de áudio nem uma alteração ampla da arquitetura da Kbar.
 
 ## Contexto
 
@@ -36,6 +37,26 @@ portanto, estabelecer e verificar a estabilidade da geometria, sem atribuir uma
 causa não demonstrada.
 
 ## Comportamento desejado
+
+### Surface e ownership
+
+1. O painel de volume DEVE existir em uma surface layer-shell própria,
+   independente da surface principal da barra, mas dentro da mesma aplicação
+   GTK.
+2. A surface do volume DEVE reutilizar o monitor resolvido para a barra, ter
+   namespace próprio e não reservar exclusive zone. Abrir, fechar ou atualizar
+   o painel NÃO DEVE alterar a surface, a geometria ou o keyboard mode da
+   barra principal.
+3. Deve existir somente uma surface lógica de Volume. A surface pode ser
+   criada sob demanda e reutilizada após o fechamento; chamadas repetidas não
+   DEVEM criar janelas, click catchers ou handlers duplicados.
+4. Enquanto Volume estiver aberto, o teclado e o foco necessários para operá-lo
+   DEVEM pertencer à surface do Volume. Ao fechar, a surface DEVE liberar foco,
+   teclado e qualquer click catcher associado.
+5. A exclusividade lógica entre Volume e Calendar DEVE ser preservada mesmo
+   sendo superfícies de tipos diferentes nesta feature. Calendar permanece com
+   seu popup atual; um fechamento atrasado de uma surface não pode fechar ou
+   limpar o owner novo.
 
 ### Abrir, fechar e foco
 
@@ -150,7 +171,7 @@ ser especificada posteriormente como `007-volume-osd`.
 
 | ID | Critério observável | Evidência |
 | --- | --- | --- |
-| AC-1 | Dado que a Kbar está visível, quando o popup é aberto ou fechado, então a largura, a altura e a posição do módulo de volume permanecem inalteradas. | Manual em Wayland/Niri; testes determinísticos para helpers de geometria quando existirem. |
+| AC-1 | Dado que a Kbar está visível, quando o painel de Volume é aberto ou fechado, então ele usa uma surface independente sem exclusive zone e a largura, a altura e a posição do módulo de volume permanecem inalteradas. | Manual em Wayland/Niri; testes determinísticos para helpers de geometria quando existirem. |
 | AC-2 | Dado que o popup é aberto várias vezes, então há apenas um popup visível, cada ação produz uma única reação observável e o popup pode ser fechado e reaberto. | Testes de lifecycle que não dependam de renderização; manual Wayland/Niri. |
 | AC-3 | Dado que Volume está aberto, quando Calendar é aberto, então Volume fecha; o inverso também funciona e um fechamento atrasado não afeta o popup novo. | Testes unitários do estado do coordinator; manual com os dois popups. |
 | AC-4 | Dado que Volume está aberto, quando Escape ou um clique fora ocorre, então somente Volume fecha e o keyboard/foco não fica preso. | Manual Wayland/Niri; teste de transições lógicas sem GTK real. |

@@ -1,9 +1,15 @@
-# Plano da funcionalidade 005: popup de volume estável da Kbar
+# Plano da funcionalidade 005: painel de volume independente e estável da Kbar
 
 Este plano descreve o delta técnico para cumprir
 [`spec.md`](spec.md). A mudança permanece dentro de `apps/kbar`, usa GTK4 e
 `gtk4-layer-shell`, preserva `AudioBackend`/`WpctlBackend` e não altera a
 arquitetura global do workspace.
+
+A decisão permanente de tratar Volume como uma surface layer-shell independente
+está registrada no
+[ADR-0004](../../docs/decisions/0004-volume-panel-surface.md). Este arquivo
+descreve apenas a execução do delta; não reabre essa decisão nem a estende para
+Calendar ou para um framework genérico de surfaces.
 
 ## Limites da mudança
 

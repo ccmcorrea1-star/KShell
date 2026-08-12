@@ -1,4 +1,7 @@
-# Tasks da funcionalidade 005: popup de volume estável da Kbar
+# Tasks da funcionalidade 005: painel de volume independente e estável da Kbar
+
+Status: execução aprovada; nenhuma task desta lista é declarada concluída por
+esta atualização documental.
 
 As tasks abaixo são unidades funcionais verificáveis. Elas não autorizam
 mixer por aplicação, backend persistente, OSD ou redesign fora do escopo de

@@ -1,8 +1,9 @@
 # Documentação de arquitetura
 
-Estes documentos descrevem a arquitetura que já está presente no repositório.
-Eles são intencionalmente separados dos requisitos de funcionalidades e dos
-registros permanentes de decisões.
+Estes documentos descrevem a arquitetura presente no repositório. Evoluções
+aprovadas, mas ainda não implementadas, aparecem explicitamente marcadas como
+tais e permanecem separadas dos requisitos de funcionalidades e dos registros
+permanentes de decisões.
 
 - [Visão geral](overview.md) — limites de pacotes, fluxos de runtime,
   interfaces externas e restrições arquiteturais.

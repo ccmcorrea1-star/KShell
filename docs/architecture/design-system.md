@@ -1,8 +1,9 @@
-# Sistema de design: Gruvbox do Klauncher
+# Sistema de design: Gruvbox do KShell
 
-Status: baseline da implementação atual. As regras visuais abaixo são
-confirmadas pelos templates, tokens, mockups e código GTK existentes; não são
-uma proposta de nova funcionalidade.
+Status: baseline visual da implementação atual. As regras abaixo são
+confirmadas pelos templates, tokens, mockups e código GTK existentes. A
+funcionalidade 005 altera a surface do painel de Volume, mas não aprova uma
+segunda linguagem visual.
 
 Klauncher é uma superfície compacta e orientada ao teclado para escolher uma
 aplicação instalada sem sair do workspace Wayland atual. Sua referência visual
@@ -23,9 +24,9 @@ sombra, pill ou tratamento HUD independente.
 
 O módulo de status de volume é uma extensão intencional dessa superfície
 discreta: seu ícone e porcentagem permanecem visíveis na barra, enquanto o
-popover compacto expõe somente o controle baseado em PipeWire e uma lista
-direta de saídas com o dispositivo ativo marcado. Ele não usa estado de áudio,
-HUD, glow ou controles decorativos separados.
+painel compacto expõe somente o controle baseado em PipeWire e uma lista direta
+de saídas com o dispositivo ativo marcado. A surface independente aprovada para
+o painel não cria estado de áudio, HUD, glow ou controles decorativos separados.
 
 ## Tokens canônicos e consumidores
 
@@ -123,6 +124,8 @@ As regras visuais vivem neste documento de arquitetura. Requisitos de
 interação e questões em aberto de cada funcionalidade vivem em
 [`001-klauncher`](../../specs/001-klauncher/spec.md),
 [`002-kbar`](../../specs/002-kbar/spec.md) e
-[`004-theme-system`](../../specs/004-theme-system/spec.md). O limite de
+[`004-theme-system`](../../specs/004-theme-system/spec.md), com o lifecycle da
+surface de Volume detalhado em
+[`005-volume-popup`](../../specs/005-volume-popup/spec.md). O limite de
 geração é uma decisão arquitetural aceita no
 [`ADR-0002`](../decisions/0002-canonical-theme-generation.md).

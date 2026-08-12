@@ -69,9 +69,11 @@ valores de capacidade DEVEM ser limitados a uma porcentagem.
 
 O volume DEVE ser lido e controlado pelo backend `wpctl` existente. A barra
 DEVE expor a porcentagem atual e o estado de mute, suportar ajustes de 5% com a
-roda do mouse, acesso ao popover com clique esquerdo e mute com clique do meio.
-O popover DEVE fornecer slider, controle de mute e lista de saídas disponíveis
-com a saída ativa marcada. Selecionar uma saída DEVE usar `wpctl set-default`.
+roda do mouse, acesso ao painel de volume com clique esquerdo e mute com clique
+do meio. O painel DEVE fornecer slider, controle de mute e lista de saídas
+disponíveis com a saída ativa marcada. Selecionar uma saída DEVE usar
+`wpctl set-default`. O lifecycle, o foco e a surface independente do painel são
+detalhados na [funcionalidade 005](../005-volume-popup/spec.md).
 
 O worker DEVE atualizar o volume com frequência, atualizar dispositivos de
 saída com menor frequência, agrupar ações `Set` contíguas do slider, preservar

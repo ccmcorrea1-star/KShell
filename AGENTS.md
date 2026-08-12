@@ -16,6 +16,10 @@ construído com GTK4 e `gtk4-layer-shell`.
   estruturais, `docs/decisions/` registra decisões permanentes e a spec é dona
   do comportamento da funcionalidade. Aponte para a fonte de verdade em vez de
   copiar o mesmo requisito.
+- Uma feature ativa deve declarar explicitamente seu status. A funcionalidade
+  005 está aprovada para implementação: sua spec define o comportamento, o
+  [ADR-0004](docs/decisions/0004-volume-panel-surface.md) define a decisão de
+  surface e o plano/tasks descrevem somente o delta de execução.
 - Preserve o comportamento visível e a compatibilidade atuais, salvo mudança
   explícita na spec. Não implemente comportamentos marcados como `TBD`.
 - Documentação futura do fluxo SDD deve ser escrita em português brasileiro
@@ -30,6 +34,15 @@ construído com GTK4 e `gtk4-layer-shell`.
   `apps/kbar` para UI/services da barra, `crates/niri` para a integração Niri,
   `crates/theme` para tokens/templates/rendering e `tools/theme-gen` para a
   geração.
+- Em `apps/kbar`, use `GtkPopover` para menus ancorados que dependem da janela
+  principal. Quando um painel exigir foco/teclado, geometria, output, camada,
+  click-outside ou lifecycle independentes, use uma `gtk::ApplicationWindow`
+  layer-shell própria e registre a decisão na spec/ADR correspondente. Isso
+  não autoriza migrar todos os popups automaticamente.
+- Na funcionalidade 005, o Volume é a primeira surface independente: deve
+  permanecer na mesma aplicação GTK, reutilizar o monitor da barra, não
+  reservar `exclusive zone` e manter `AudioBackend`/`WpctlBackend` intactos.
+  O Calendar continua como `GtkPopover` até uma mudança explícita de spec.
 - Mantenha testes unitários junto da implementação. Use `tests/` somente para
   testes que atravessem limites de pacotes.
 - Trate arquivos `.desktop`, ambiente, caminhos e saída de comandos como não
@@ -53,6 +66,11 @@ O launcher e a barra exigem Linux, uma sessão Wayland, GTK4 e
 aplicações, instale o binário usado pelo Niri com `cargo install --path apps/klauncher`
 ou `cargo install --path apps/kbar`; o Niri inicia os binários por meio do
 `PATH`.
+
+Ao alterar uma surface GTK/layer-shell, valide também lifecycle, foco, Escape,
+click-outside, monitor/output, ordem entre surfaces e ausência de alteração na
+geometria reservada pela barra. Para a 005, a matriz manual está em
+`specs/005-volume-popup/tasks.md`.
 
 ## Validação
 
