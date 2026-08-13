@@ -1,0 +1,9 @@
+pub const SPACE_2: i32 = 8;
+pub const PANEL_WIDTH: i32 = 520;
+pub const PANEL_HEIGHT: i32 = 300;
+pub const PANEL_MARGIN: i32 = 16;
+pub const ICON_SIZE: i32 = 18;
+pub const ROW_HEIGHT: i32 = 38;
+pub const PANEL_INSET: i32 = 14;
+pub const ICON_NAME_GAP: i32 = 10;
+pub const BACKDROP_ANIMATION_MS: u32 = 150;

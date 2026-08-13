@@ -9,5 +9,3 @@ license.workspace = true
 gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 libc.workspace = true
-kshell-niri.workspace = true
-kshell-theme.workspace = true

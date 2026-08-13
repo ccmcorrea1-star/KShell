@@ -11,13 +11,6 @@ A cobertura atual inclui:
   `Exec`, ranking fuzzy e construção de comandos de launch.
 - `apps/klauncher/src/ui/` — transições de seleção, texto do estado vazio e
   cálculos de geometria.
-- `apps/kbar/src/` — aritmética de clock/calendário, seleção de workspaces,
-  coordenação de popovers, agregação de status, comandos limitados, parsing de
-  áudio e estado de interação.
-- `crates/niri/src/` — encoding/decoding do protocolo, estado de workspaces e
-  comportamento de reconexão.
-- `crates/theme/src/` — rendering de tokens/templates e transformações que
-  preservam os consumidores.
 
 O diretório raiz `tests/` é reservado para testes de integração que precisem
 exercitar mais de um pacote. Atualmente ele contém apenas documentação; ainda

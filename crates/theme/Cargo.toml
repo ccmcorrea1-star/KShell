@@ -1,9 +1,0 @@
-[package]
-name = "kshell-theme"
-version.workspace = true
-edition.workspace = true
-description = "Shared KShell design tokens and theme rendering"
-license.workspace = true
-
-[dependencies]
-kshell-niri.workspace = true

@@ -9,13 +9,13 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
+use super::tokens;
 use crate::core::{desktop::DesktopEntry, search};
 use crate::ui::selection::{Direction, SelectionState};
 use crate::ui::OutputContext;
-use kshell_theme::tokens;
 
 const APPLICATION_ID: &str = "io.github.ccmcorrea1.kshell.Launcher";
-const LAYER_NAMESPACE: &str = kshell_niri::LAUNCHER_NAMESPACE;
+const LAYER_NAMESPACE: &str = "my-shell-launcher";
 const MAX_EMPTY_QUERY_CHARS: usize = 32;
 const MAX_EMPTY_MESSAGE_WIDTH_CHARS: i32 = 60;
 const STYLE: &str = include_str!("style.css");
@@ -471,8 +471,8 @@ fn install_css() {
 
 #[cfg(test)]
 mod tests {
+    use super::tokens;
     use super::{empty_message, panel_size_for_geometry, MAX_EMPTY_QUERY_CHARS};
-    use kshell_theme::tokens;
 
     #[test]
     fn empty_message_uses_available_copy_without_a_query() {
