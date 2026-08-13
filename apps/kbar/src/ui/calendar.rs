@@ -28,11 +28,21 @@ impl CalendarWidget {
         let popover = gtk::Popover::new();
         popover.add_css_class("kbar-popover");
         popover.add_css_class("kbar-calendar-popover");
-        popover.set_autohide(true);
+        // Keep Calendar as a GtkPopover, but let a click on another bar
+        // module reach that module. Focus leave and the explicit Escape
+        // handler below retain dismissal without consuming that click.
+        popover.set_autohide(false);
         popover.set_has_arrow(false);
         popover.set_position(gtk::PositionType::Bottom);
+        popover.set_offset(
+            0,
+            (tokens::BAR_HEIGHT - tokens::STATUS_ICON_SIZE) / 2 + tokens::SPACE_2,
+        );
         popover.set_parent(anchor);
-        coordinator.register(PopoverId::Calendar, &popover);
+        let popover_for_coordinator = popover.clone();
+        coordinator.register(PopoverId::Calendar, move || {
+            popover_for_coordinator.popdown();
+        });
 
         let coordinator_for_close = coordinator.clone();
         popover.connect_closed(move |_| coordinator_for_close.close(PopoverId::Calendar));
@@ -150,6 +160,15 @@ impl CalendarWidget {
         });
         popover.add_controller(key_controller);
 
+        let focus_controller = gtk::EventControllerFocus::new();
+        let popover_for_focus = popover.clone();
+        focus_controller.connect_leave(move |_| {
+            if popover_for_focus.is_visible() {
+                popover_for_focus.popdown();
+            }
+        });
+        popover.add_controller(focus_controller);
+
         let content_for_focus = content.clone();
         let view_for_show = view.clone();
         popover.connect_show(move |_| {
@@ -171,6 +190,10 @@ impl CalendarWidget {
         let coordinator_for_click = coordinator.clone();
         left_click.connect_pressed(move |_, press_count, _, _| {
             if press_count == 1 {
+                if popover_for_click.is_visible() {
+                    popover_for_click.popdown();
+                    return;
+                }
                 if let Some(today) = calendar::today() {
                     view_for_click.today.set(Some(today));
                     view_for_click.displayed_month.set(today.start_of_month());

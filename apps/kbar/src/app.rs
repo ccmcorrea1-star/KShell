@@ -90,6 +90,9 @@ fn build_bar(application: &gtk::Application) {
     let volume_actions = services::spawn_status_worker(status_sender);
     let coordinator = PopoverCoordinator::new(&window);
     let bar = Rc::new(BarUi::new(
+        application,
+        &window,
+        output_context.monitor.clone(),
         &coordinator,
         output_context.niri_name.clone(),
         volume_actions,

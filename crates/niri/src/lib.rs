@@ -17,6 +17,12 @@ pub const LAUNCHER_NAMESPACE: &str = "my-shell-launcher";
 /// Namespace assigned to the KShell top bar layer-shell surface.
 pub const BAR_NAMESPACE: &str = "my-shell-bar";
 
+/// Namespace assigned to the KShell volume panel layer-shell surface.
+pub const VOLUME_NAMESPACE: &str = "my-shell-volume-popup";
+
+/// Namespace assigned to the KShell volume panel click-catcher surface.
+pub const VOLUME_CLICK_CATCHER_NAMESPACE: &str = "my-shell-volume-click-catcher";
+
 /// Command started by the default Niri bar autostart fragment.
 pub const BAR_COMMAND: &str = "kbar";
 

@@ -120,8 +120,9 @@ pub fn spawn_audio_worker<B: AudioBackend>(
         };
         let mut last_outputs_refresh = Instant::now();
         let mut last_sent = None;
+        let mut pending_sync = None;
 
-        if !send_audio_status(&update_sender, &status, &mut last_sent) {
+        if !send_audio_status(&update_sender, &mut status, &mut last_sent) {
             return;
         }
 
@@ -130,24 +131,45 @@ pub fn spawn_audio_worker<B: AudioBackend>(
             match receive_volume_action(&action_receiver, &mut pending_actions) {
                 Ok(action) => {
                     execute_volume_action(&backend, &action);
-                    refresh_status_after_action(&backend, &mut status, &action);
+                    let unconfirmed_sync =
+                        refresh_status_after_action(&backend, &mut status, &action);
+                    match &action {
+                        VolumeAction::Set(_)
+                        | VolumeAction::Adjust(_)
+                        | VolumeAction::SetDefault(_) => pending_sync = None,
+                        VolumeAction::Sync { .. } => pending_sync = unconfirmed_sync,
+                        VolumeAction::ToggleMute | VolumeAction::RefreshOutputs => {}
+                    }
                     if matches!(
                         action,
                         VolumeAction::SetDefault(_) | VolumeAction::RefreshOutputs
                     ) {
                         last_outputs_refresh = Instant::now();
                     }
-                    if !send_audio_status(&update_sender, &status, &mut last_sent) {
+                    if !send_audio_status(&update_sender, &mut status, &mut last_sent) {
                         break;
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    let mut changed = refresh_volume_level(&backend, &mut status.volume);
+                    let (mut changed, valid_volume_read) =
+                        refresh_volume_level_with_validity(&backend, &mut status.volume);
+                    if let Some((token, requested_percent)) = pending_sync {
+                        let confirmed = valid_volume_read
+                            && status
+                                .volume
+                                .percent
+                                .is_some_and(|percent| percent.abs_diff(requested_percent) <= 1);
+                        if confirmed {
+                            status.volume_sync_token = Some(token);
+                            pending_sync = None;
+                            changed = true;
+                        }
+                    }
                     if last_outputs_refresh.elapsed() >= AUDIO_OUTPUT_REFRESH_INTERVAL {
                         changed |= refresh_outputs(&backend, &mut status.volume);
                         last_outputs_refresh = Instant::now();
                     }
-                    if changed && !send_audio_status(&update_sender, &status, &mut last_sent) {
+                    if changed && !send_audio_status(&update_sender, &mut status, &mut last_sent) {
                         break;
                     }
                 }
@@ -159,7 +181,7 @@ pub fn spawn_audio_worker<B: AudioBackend>(
 
 fn send_audio_status(
     sender: &Sender<StatusUpdate>,
-    status: &AudioStatus,
+    status: &mut AudioStatus,
     last_sent: &mut Option<AudioStatus>,
 ) -> bool {
     if last_sent.as_ref() == Some(status) {
@@ -168,6 +190,7 @@ fn send_audio_status(
     if sender.send(StatusUpdate::Audio(status.clone())).is_err() {
         return false;
     }
+    status.volume_sync_token = None;
     *last_sent = Some(status.clone());
     true
 }
@@ -225,30 +248,41 @@ fn refresh_status_after_action<B: AudioBackend>(
     backend: &B,
     status: &mut AudioStatus,
     action: &VolumeAction,
-) {
+) -> Option<(u64, u8)> {
     status.volume_sync_token = None;
     match action {
         VolumeAction::Set(percent) => {
             // Keep the slider responsive while the backend catches up. The
             // release Sync below replaces this optimistic value with a read.
             status.volume.percent = Some((*percent).min(100));
+            None
         }
         VolumeAction::Sync {
             token,
             requested_percent,
         } => {
-            status.volume = read_volume_after_sync(backend, &status.volume, *requested_percent);
-            status.volume_sync_token = Some(*token);
+            let (volume, confirmed) =
+                read_volume_after_sync(backend, &status.volume, *requested_percent);
+            status.volume = volume;
+            if confirmed {
+                status.volume_sync_token = Some(*token);
+                None
+            } else {
+                Some((*token, *requested_percent))
+            }
         }
         VolumeAction::SetDefault(_) => {
             refresh_volume_level(backend, &mut status.volume);
             refresh_outputs(backend, &mut status.volume);
+            None
         }
         VolumeAction::RefreshOutputs => {
             refresh_outputs(backend, &mut status.volume);
+            None
         }
         VolumeAction::Adjust(_) | VolumeAction::ToggleMute => {
             refresh_volume_level(backend, &mut status.volume);
+            None
         }
     }
 }
@@ -257,18 +291,30 @@ fn read_volume_after_sync<B: AudioBackend>(
     backend: &B,
     current: &VolumeStatus,
     requested_percent: u8,
-) -> VolumeStatus {
+) -> (VolumeStatus, bool) {
     thread::sleep(VOLUME_SYNC_SETTLE_DELAY);
     let first_read = backend.read_volume_level();
-    let level = match first_read {
+    let (level, confirmed) = match first_read {
         Some(level) if volume_read_needs_retry(&level, requested_percent) => {
             thread::sleep(VOLUME_SYNC_RETRY_DELAY);
-            backend.read_volume_level().or(Some(level))
+            match backend.read_volume_level() {
+                Some(level) => {
+                    let confirmed = !volume_read_needs_retry(&level, requested_percent);
+                    (Some(level), confirmed)
+                }
+                None => (Some(level), false),
+            }
         }
-        Some(level) => Some(level),
+        Some(level) => (Some(level), true),
         None => {
             thread::sleep(VOLUME_SYNC_RETRY_DELAY);
-            backend.read_volume_level()
+            match backend.read_volume_level() {
+                Some(level) => {
+                    let confirmed = !volume_read_needs_retry(&level, requested_percent);
+                    (Some(level), confirmed)
+                }
+                None => (None, false),
+            }
         }
     };
 
@@ -276,8 +322,10 @@ fn read_volume_after_sync<B: AudioBackend>(
     if let Some(level) = level {
         result.percent = level.percent;
         result.muted = level.muted;
+    } else {
+        result.percent = None;
     }
-    result
+    (result, confirmed)
 }
 
 fn volume_read_needs_retry(status: &VolumeStatus, requested_percent: u8) -> bool {
@@ -294,13 +342,20 @@ fn read_volume_with_backend<B: AudioBackend>(backend: &B) -> VolumeStatus {
 }
 
 fn refresh_volume_level<B: AudioBackend>(backend: &B, status: &mut VolumeStatus) -> bool {
+    refresh_volume_level_with_validity(backend, status).0
+}
+
+fn refresh_volume_level_with_validity<B: AudioBackend>(
+    backend: &B,
+    status: &mut VolumeStatus,
+) -> (bool, bool) {
     let Some(level) = backend.read_volume_level() else {
-        return false;
+        return (false, false);
     };
     let changed = status.percent != level.percent || status.muted != level.muted;
     status.percent = level.percent;
     status.muted = level.muted;
-    changed
+    (changed, true)
 }
 
 fn refresh_outputs<B: AudioBackend>(backend: &B, status: &mut VolumeStatus) -> bool {
@@ -479,13 +534,36 @@ fn volume_step_argument(step: i8) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-    use std::sync::mpsc;
+    use std::sync::{mpsc, Arc, Mutex};
 
     use super::{
         attach_output_devices, friendly_output_name, parse_wpctl_outputs, parse_wpctl_volume,
-        receive_volume_action, refresh_status_after_action, AudioStatus, OutputDevice,
-        VolumeAction, VolumeStatus, WpctlBackend,
+        receive_volume_action, refresh_status_after_action, send_audio_status, AudioBackend,
+        AudioStatus, OutputDevice, StatusUpdate, VolumeAction, VolumeStatus, WpctlBackend,
     };
+
+    #[derive(Clone, Default)]
+    struct ReadSequenceBackend {
+        reads: Arc<Mutex<VecDeque<Option<VolumeStatus>>>>,
+    }
+
+    impl AudioBackend for ReadSequenceBackend {
+        fn set_volume(&self, _percent: u8) {}
+
+        fn adjust_volume(&self, _step: i8) {}
+
+        fn toggle_mute(&self) {}
+
+        fn set_default_output(&self, _id: u32) {}
+
+        fn read_volume_level(&self) -> Option<VolumeStatus> {
+            self.reads.lock().expect("read sequence lock").pop_front()?
+        }
+
+        fn read_outputs(&self) -> Option<Vec<OutputDevice>> {
+            None
+        }
+    }
 
     #[test]
     fn parses_pipewire_volume_and_mute_state() {
@@ -681,5 +759,53 @@ mod tests {
 
         assert_eq!(status.volume.percent, Some(83));
         assert_eq!(status.volume_sync_token, None);
+    }
+
+    #[test]
+    fn an_unavailable_sync_keeps_confirmation_pending() {
+        let backend = ReadSequenceBackend {
+            reads: Arc::new(Mutex::new(VecDeque::from([None, None]))),
+        };
+        let mut status = AudioStatus {
+            volume: VolumeStatus {
+                percent: Some(83),
+                ..VolumeStatus::default()
+            },
+            volume_sync_token: None,
+        };
+
+        let pending = refresh_status_after_action(
+            &backend,
+            &mut status,
+            &VolumeAction::Sync {
+                token: 9,
+                requested_percent: 83,
+            },
+        );
+
+        assert_eq!(pending, Some((9, 83)));
+        assert_eq!(status.volume.percent, None);
+        assert_eq!(status.volume_sync_token, None);
+    }
+
+    #[test]
+    fn confirmed_tokens_are_one_shot_status_metadata() {
+        let (sender, receiver) = mpsc::channel();
+        let mut status = AudioStatus {
+            volume_sync_token: Some(11),
+            ..AudioStatus::default()
+        };
+        let mut last_sent = None;
+
+        assert!(send_audio_status(&sender, &mut status, &mut last_sent));
+        let StatusUpdate::Audio(received) = receiver.recv().expect("audio status") else {
+            panic!("expected audio status");
+        };
+        assert_eq!(received.volume_sync_token, Some(11));
+        assert_eq!(status.volume_sync_token, None);
+        assert_eq!(
+            last_sent.as_ref().and_then(|sent| sent.volume_sync_token),
+            None
+        );
     }
 }

@@ -23,6 +23,9 @@ pub struct StatusWidget {
 
 impl StatusWidget {
     pub fn new(
+        application: &gtk::Application,
+        main_window: &gtk::ApplicationWindow,
+        monitor: Option<gtk::gdk::Monitor>,
         coordinator: &PopoverCoordinator,
         action_sender: mpsc::Sender<VolumeAction>,
     ) -> Self {
@@ -31,7 +34,13 @@ impl StatusWidget {
         container.set_valign(gtk::Align::Center);
         container.set_baseline_position(gtk::BaselinePosition::Center);
 
-        let (volume_item, volume) = VolumeWidget::new(coordinator, action_sender);
+        let (volume_item, volume) = VolumeWidget::new(
+            application,
+            main_window,
+            monitor,
+            coordinator,
+            action_sender,
+        );
 
         let network_icon = StatusIcon::new(IconKind::Network);
         let network_item = status_item(&network_icon, None);

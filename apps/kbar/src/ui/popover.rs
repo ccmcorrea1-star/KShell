@@ -4,7 +4,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use gtk4 as gtk;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 
@@ -18,6 +17,9 @@ pub enum PopoverId {
 pub struct PopoverState {
     active: Option<PopoverId>,
 }
+
+type CloseHandler = Rc<dyn Fn()>;
+type CloseHandlers = Rc<RefCell<HashMap<PopoverId, CloseHandler>>>;
 
 impl PopoverState {
     pub fn open(&mut self, id: PopoverId) -> Option<PopoverId> {
@@ -34,6 +36,10 @@ impl PopoverState {
         true
     }
 
+    pub fn is_active(&self, id: PopoverId) -> bool {
+        self.active == Some(id)
+    }
+
     #[cfg(test)]
     pub fn active(&self) -> Option<PopoverId> {
         self.active
@@ -44,7 +50,7 @@ impl PopoverState {
 pub struct PopoverCoordinator {
     state: Rc<Cell<PopoverState>>,
     window: gtk::ApplicationWindow,
-    popovers: Rc<RefCell<HashMap<PopoverId, gtk::Popover>>>,
+    close_handlers: CloseHandlers,
 }
 
 impl PopoverCoordinator {
@@ -52,23 +58,34 @@ impl PopoverCoordinator {
         Self {
             state: Rc::new(Cell::new(PopoverState::default())),
             window: window.clone(),
-            popovers: Rc::new(RefCell::new(HashMap::new())),
+            close_handlers: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
-    pub fn register(&self, id: PopoverId, popover: &gtk::Popover) {
-        self.popovers.borrow_mut().insert(id, popover.clone());
+    pub fn register<F>(&self, id: PopoverId, close: F)
+    where
+        F: Fn() + 'static,
+    {
+        self.close_handlers.borrow_mut().insert(id, Rc::new(close));
     }
 
     pub fn open(&self, id: PopoverId) {
         let previous = self.state.get().open(id);
         self.state.set(PopoverState { active: Some(id) });
         if let Some(previous) = previous.filter(|previous| *previous != id) {
-            if let Some(popover) = self.popovers.borrow().get(&previous) {
-                popover.popdown();
+            if let Some(close) = self.close_handlers.borrow().get(&previous).cloned() {
+                close();
             }
         }
-        self.window.set_keyboard_mode(KeyboardMode::OnDemand);
+        if id == PopoverId::Calendar {
+            self.window.set_keyboard_mode(KeyboardMode::OnDemand);
+        } else if previous == Some(PopoverId::Calendar) {
+            self.window.set_keyboard_mode(KeyboardMode::None);
+        }
+    }
+
+    pub fn is_active(&self, id: PopoverId) -> bool {
+        self.state.get().is_active(id)
     }
 
     pub fn close(&self, id: PopoverId) {
@@ -77,7 +94,9 @@ impl PopoverCoordinator {
             return;
         }
         self.state.set(state);
-        self.window.set_keyboard_mode(KeyboardMode::None);
+        if id == PopoverId::Calendar {
+            self.window.set_keyboard_mode(KeyboardMode::None);
+        }
     }
 }
 
@@ -105,5 +124,14 @@ mod tests {
         assert_eq!(state.active(), Some(PopoverId::Volume));
         assert!(state.close(PopoverId::Volume));
         assert_eq!(state.active(), None);
+    }
+
+    #[test]
+    fn active_owner_can_be_checked_before_toggling() {
+        let mut state = PopoverState::default();
+        assert!(!state.is_active(PopoverId::Volume));
+        state.open(PopoverId::Volume);
+        assert!(state.is_active(PopoverId::Volume));
+        assert!(!state.is_active(PopoverId::Calendar));
     }
 }

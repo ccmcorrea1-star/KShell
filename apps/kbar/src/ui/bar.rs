@@ -21,13 +21,22 @@ pub struct BarUi {
 
 impl BarUi {
     pub fn new(
+        application: &gtk::Application,
+        main_window: &gtk::ApplicationWindow,
+        monitor: Option<gtk::gdk::Monitor>,
         coordinator: &PopoverCoordinator,
         output_name: Option<String>,
         action_sender: mpsc::Sender<VolumeAction>,
     ) -> Self {
         let workspaces = WorkspacesWidget::new(output_name);
         let clock = ClockWidget::new(coordinator);
-        let status = StatusWidget::new(coordinator, action_sender);
+        let status = StatusWidget::new(
+            application,
+            main_window,
+            monitor,
+            coordinator,
+            action_sender,
+        );
 
         let root = gtk::CenterBox::new();
         root.add_css_class("kbar");
