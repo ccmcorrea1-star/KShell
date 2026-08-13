@@ -67,10 +67,10 @@ automatizada e qual exige uma sessão.
 ## Princípio 7 — Manter a mudança rastreável sem duplicação
 
 Documentos de funcionalidade são responsáveis pelo comportamento da
-funcionalidade. `docs/architecture/` é responsável pela estrutura e pelas
-restrições globais. `docs/decisions/` registra decisões permanentes importantes
-com contexto e consequências. Cada fato deve ter uma fonte de verdade; os
-demais documentos devem referenciá-la em vez de repetir o requisito.
+funcionalidade. Decisões estruturais duradouras devem ser registradas na spec
+ou no `plan.md` da mudança que as introduz. Cada fato deve ter uma fonte de
+verdade; os demais documentos devem referenciá-la em vez de repetir o
+requisito.
 
 ## Governança
 

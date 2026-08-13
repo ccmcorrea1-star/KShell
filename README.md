@@ -7,17 +7,12 @@ theme-generation tool.
 
 ## Current features
 
-The repository documents the implemented baseline retrospectively. The
-feature specifications distinguish behavior confirmed by the code, behavior
-inferred from the current module boundaries, and decisions that are still
-`TBD`.
-
-| Feature | Current implementation | Specification |
-| --- | --- | --- |
-| Klauncher | XDG `.desktop` discovery, fuzzy search, keyboard/mouse selection, and shell-free launch | [001-klauncher](specs/001-klauncher/spec.md) |
-| Kbar | Niri workspaces, Portuguese clock/calendar, volume, network, and optional battery status | [002-kbar](specs/002-kbar/spec.md) |
-| Niri integration | JSON event stream, workspace state, reconnecting IPC, layer-shell identifiers, and generated KDL fragments | [003-niri-integration](specs/003-niri-integration/spec.md) |
-| Shared theme system | Canonical tokens, generated GTK/KDL/mockup files, and opt-in configured consumer updates | [004-theme-system](specs/004-theme-system/spec.md) |
+| Feature | Current implementation |
+| --- | --- |
+| Klauncher | XDG `.desktop` discovery, fuzzy search, keyboard/mouse selection, and shell-free launch |
+| Kbar | Niri workspaces, Portuguese clock/calendar, volume, network, and optional battery status |
+| Niri integration | JSON event stream, workspace state, reconnecting IPC, layer-shell identifiers, and generated KDL fragments |
+| Shared theme system | Canonical tokens, generated GTK/KDL/mockup files, and opt-in configured consumer updates |
 
 ## Workspace layout
 
@@ -28,15 +23,13 @@ inferred from the current module boundaries, and decisions that are still
 - `tools/theme-gen` — command-line theme generator.
 - `contrib/niri` — generated optional Niri configuration fragments.
 - `mockups` — browser mockups and generated visual reference assets.
-- `specs` — feature specifications, with optional plans and task lists for
-  active changes that need them.
-- `docs/architecture` — global architecture and design-system documentation.
-- `docs/decisions` — accepted architectural decision records.
+- `.agents/skills` — Spec Kit skills used by Codex.
+- `.specify` — Spec Kit templates, scripts, workflows, and project memory.
 
-See the [architecture overview](docs/architecture/overview.md) for current
-boundaries and runtime flows, the [constitution](.specify/memory/constitution.md)
-for global feature rules, and the [test structure](tests/README.md) for the
-existing validation layout.
+See the [constitution](.specify/memory/constitution.md) for global feature
+rules and the [test structure](tests/README.md) for the existing validation
+layout. New feature specifications are created by `$speckit-specify` under
+`specs/`.
 
 ## Requirements
 
@@ -91,8 +84,7 @@ Search matches the application name and generic name with fuzzy ranking.
 
 The selected row is launched with `Enter` or a click. `Up` and `Down` navigate
 with wrapping, `Esc` closes the launcher, and clicking outside the panel closes
-it. The panel uses the current Gruvbox design tokens; see the
-[design-system architecture document](docs/architecture/design-system.md).
+it. The panel uses the current Gruvbox design tokens.
 
 Desktop `Exec` entries are parsed into an executable and argument vector. They
 are never passed to a shell. Terminal entries use `$TERMINAL` and fall back to
@@ -140,8 +132,8 @@ cargo run -p kshell-theme-gen -- --check
 ```
 
 When an installed consumer has an existing compatible configuration, `--write`
-also updates its theme values while preserving unrelated settings. See the
-[theme specification](specs/004-theme-system/spec.md) for the current scope.
+also updates its theme values while preserving unrelated settings. The theme
+generator sources and templates define the current scope.
 
 ## Validation
 
